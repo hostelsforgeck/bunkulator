@@ -1,0 +1,1649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <title>Attendance Calculator</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #111113;
+      --card: #000;
+      --border: rgba(255,255,255,0.07);
+      --t2: rgba(255,255,255,0.5);
+      --mono: 'DM Mono', monospace;
+
+      /* ── Fluid layout tokens ──
+         All sizing derives from actual viewport height so
+         the entire UI fits on one screen, portrait-only.
+         dvh = dynamic viewport height (handles mobile browser chrome).
+         We budget the 100dvh across 4 zones:
+           gap-top  : safe-area + small breathing room
+           card-vh  : display card (largest zone)
+           sliders  : 2 radial + 1 horizontal (compact)
+           gap-bot  : safe-area bottom                              */
+
+      --gap-outer : clamp(6px, 1.5dvh, 14px);
+      --gap-cards : clamp(5px, 1dvh,   10px);
+
+      /* Card width: full bleed minus symmetric gutters */
+      --gutter     : clamp(12px, 3.5vw, 20px);
+      --card-w     : min(100vw - var(--gutter) * 2, 420px);
+
+      /* Display card height: auto (content-driven) with min-height constraint */
+      --display-card-pad-v : clamp(12px, 1.8dvh, 20px);
+      --display-card-pad-h : clamp(12px, 3vw,    18px);
+
+      /* Radial slider cards */
+      --radial-h   : clamp(108px, 18dvh, 148px);
+      --radial-pad : clamp(12px, 1.6dvh, 18px);
+
+      /* Horizontal slider card */
+      --horiz-h    : clamp(72px, 11dvh, 108px);
+      --horiz-pad  : clamp(10px, 1.4dvh, 16px);
+
+      /* Typography scale */
+      --fs-pct     : clamp(36px, 6.5vw, 44px);
+      --fs-badge   : clamp(12px, 2.2vw, 13px);
+      --fs-frac    : clamp(12px, 2.2vw, 13px);
+      --fs-label   : clamp(13px, 2.6vw, 14px);
+      --fs-val     : clamp(19px, 4vw,   22px);
+      --fs-action  : clamp(13px, 2.4vw, 14px);
+      --fs-action-num : clamp(20px, 4.5vw, 22px);
+      --fs-cell    : clamp(11px, 1.9vw, 12px);
+      --cell-sq    : clamp(30px, 6.5vw, 34px);
+    }
+
+    html, body {
+      height: 100%;
+      overflow: hidden; /* HARD stop — no scrolling ever */
+    }
+
+    body {
+      background:
+        radial-gradient(ellipse 80% 55% at 50% 0%,   rgba(255,255,255,0.045) 0%, transparent 70%),
+        radial-gradient(ellipse 60% 45% at 50% 100%, rgba(255,255,255,0.025) 0%, transparent 70%),
+        var(--bg);
+      font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--gap-cards);
+      padding:
+        max(var(--gap-outer), env(safe-area-inset-top))
+        var(--gutter)
+        max(var(--gap-outer), env(safe-area-inset-bottom));
+      min-height: 100dvh;
+      max-height: 100dvh;
+    }
+
+    /* ── Built with credit ── */
+    .built-with {
+      position: fixed;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      pointer-events: auto;
+    }
+    .built-with a {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-family: var(--mono);
+      font-size: clamp(10px, 1.8vw, 11px);
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.22);
+      text-decoration: none;
+      padding: 3px 8px;
+      border-radius: 20px;
+      transition: color 0.3s ease;
+      white-space: nowrap;
+    }
+    .built-with a:hover { color: rgba(255,255,255,0.55); }
+    .built-with-name {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      text-decoration-color: rgba(255,255,255,0.2);
+    }
+    .built-with-label {
+      transition: opacity 1.2s ease;
+    }
+    .built-with-label.fade-out { opacity: 0; }
+    .built-with-label.fade-in  { opacity: 1; }
+    #noise-canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 999;
+      pointer-events: none;
+      opacity: 0.045;
+      mix-blend-mode: overlay;
+    }
+
+    /* ══════════════════════════════════════
+       DISPLAY CARD
+    ══════════════════════════════════════ */
+    .vH {
+      width: var(--card-w);
+      background: var(--card);
+      border-radius: clamp(14px, 3.5vw, 22px);
+      padding: var(--display-card-pad-v) var(--display-card-pad-h);
+      flex-shrink: 0;
+    }
+    .vH-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: clamp(8px, 1.5dvh, 16px);
+    }
+    .vH-pct {
+      font-family: 'DM Sans', sans-serif;
+      font-size: var(--fs-pct);
+      font-weight: 700;
+      letter-spacing: -.05em;
+      line-height: 1;
+    }
+    .vH-pct sup { font-size: clamp(14px, 2.8vw, 16px); font-weight: 400; opacity: .35; }
+    .vH-head-r { text-align: right; }
+    .vH-badge {
+      font-size: var(--fs-badge);
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-bottom: 3px;
+      letter-spacing: 0.04em;
+    }
+    .vH-frac {
+      font-size: var(--fs-frac);
+      font-family: var(--mono);
+      color: var(--t2);
+      padding-right: 4px;
+      transition: opacity .25s ease;
+      letter-spacing: 0.03em;
+    }
+    .vH-frac .frac-arrow { color: rgba(255,255,255,.3); margin: 0 5px; letter-spacing: 0; }
+    .vH-frac .frac-to { transition: color .25s ease; }
+
+    /* scroll cells */
+    .vH-scroll-outer {
+      position: relative;
+      margin: 0 -4px;
+    }
+    .vH-scroll-outer::before,
+    .vH-scroll-outer::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 6px;
+      width: 24px;
+      pointer-events: none;
+      z-index: 2;
+      transition: opacity .2s ease;
+    }
+    .vH-scroll-outer::before { left: 0;  background: linear-gradient(to right, #000, transparent); opacity: 0; }
+    .vH-scroll-outer::after  { right: 0; background: linear-gradient(to left, #000, transparent); opacity: 1; }
+    .vH-scroll-outer.at-end::after { opacity: 0; }
+    .vH-scroll-outer.scrolled::before { opacity: 1; }
+    .vH-scroll-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 0 4px 5px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+    .vH-scroll-wrap::-webkit-scrollbar { display: none; }
+    .vH-cells { display: flex; gap: 3px; width: max-content; min-width: 100%; }
+    .vH-cell-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; }
+    .vH-cell-top {
+      font-family: var(--mono);
+      font-size: var(--fs-cell);
+      font-weight: 600;
+      line-height: 1;
+      min-height: 10px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .vH-cell-sq {
+      width: var(--cell-sq);
+      height: var(--cell-sq);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      flex-shrink: 0;
+    }
+    .vH-cell-sq-inner { width: 100%; height: 100%; border-radius: 4px; transition: background .3s ease; }
+    .vH-cell-bot {
+      font-size: var(--fs-cell);
+      font-family: var(--mono);
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+      min-height: 10px;
+    }
+    .vH-cell-col.is-target .vH-cell-sq { outline: 2px solid rgba(255,255,255,.5); outline-offset: 1px; }
+
+    /* divider */
+    .vH-divider { height: 1px; background: var(--border); margin: clamp(8px, 1.3dvh, 14px) 0 clamp(6px, 1dvh, 12px); }
+    .vH-divider-top { margin-top: 0; margin-bottom: clamp(8px, 1.3dvh, 14px); }
+
+    /* summary line */
+    .vH-summary {
+      font-size: clamp(10px, 1.9vw, 11px);
+      font-family: var(--mono);
+      color: rgba(255,255,255,0.3);
+      letter-spacing: 0.05em;
+      text-align: center;
+      padding-bottom: clamp(6px, 1dvh, 10px);
+    }
+
+    /* carousel */
+    .vH-carousel { position: relative; overflow: hidden; min-height: clamp(36px, 6dvh, 52px); }
+    .vH-slides { display: flex; width: 200%; transition: transform .32s cubic-bezier(.4,0,.2,1); }
+    .vH-slides.single { width: 100%; }
+    .vH-slide { width: 50%; flex-shrink: 0; }
+    .vH-slides.single .vH-slide { width: 100%; }
+    .vH-action-row { display: flex; align-items: center; gap: 8px; }
+    .vH-action-icon { font-size: var(--fs-label); width: 22px; text-align: center; flex-shrink: 0; line-height: 1; }
+    .vH-action-text { flex: 1; font-size: var(--fs-action); color: var(--t2); line-height: 1.4; letter-spacing: 0.03em; }
+    .vH-action-text strong { color: #fff; font-weight: 700; }
+    .vH-action-num {
+      font-size: var(--fs-action-num);
+      font-weight: 700;
+      font-family: var(--mono);
+      flex-shrink: 0;
+      min-width: 28px;
+      text-align: right;
+    }
+
+    /* dots */
+    .vH-dots { display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: clamp(6px, 1dvh, 12px); }
+    .vH-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.25);
+      border: none;
+      transition: all .3s cubic-bezier(.4,0,.2,1);
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .vH-dot.active { width: 16px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.25); }
+    /* progress fill inside the active (line) indicator */
+    .vH-dot.active::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      height: 100%;
+      width: var(--dot-progress, 0%);
+      background: #fff;
+      border-radius: 3px;
+      transition: none;
+    }
+
+    .vH-swipe-hint {
+      position: absolute; right: 0; top: 50%;
+      transform: translateY(-50%);
+      font-size: 13px;
+      color: rgba(255,255,255,.2);
+      pointer-events: none;
+      animation: hintFade 2s ease .8s forwards;
+      opacity: 0;
+    }
+    @keyframes hintFade {
+      0%   { opacity: 0; transform: translateY(-50%) translateX(0); }
+      20%  { opacity: 1; transform: translateY(-50%) translateX(-4px); }
+      70%  { opacity: 1; transform: translateY(-50%) translateX(-4px); }
+      100% { opacity: 0; transform: translateY(-50%) translateX(-4px); }
+    }
+
+    /* ══════════════════════════════════════
+       RADIAL SLIDER CARDS
+    ══════════════════════════════════════ */
+    .card {
+      position: relative;
+      width: var(--card-w);
+      height: var(--radial-h);
+      background: #000;
+      border-radius: clamp(16px, 4vw, 24px);
+      padding: var(--radial-pad);
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .card::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 20%;
+      background: linear-gradient(to bottom, transparent, black);
+      z-index: 30;
+      pointer-events: none;
+    }
+    .indicator {
+      position: absolute;
+      left: 50%;
+      top: calc(var(--radial-pad) + 28px + clamp(12px, 1.6dvh, 18px));
+      transform: translateX(-50%);
+      width: 2px;
+      height: 60%; /* relative to card height */
+      background: white;
+      border-radius: 999px;
+      z-index: 20;
+      pointer-events: none;
+      box-shadow: 0 0 3px 1px rgba(255,255,255,0.30), 0 0 8px 2px rgba(255,255,255,0.12);
+    }
+    .value-display {
+      position: relative;
+      width: 100%;
+      height: 28px;
+      margin-bottom: clamp(8px, 1.5dvh, 24px);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .value-display .label {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: var(--fs-label);
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .value-display .label-before { right: calc(50% + 22px); }
+    .value-display .label-after  { left:  calc(50% + 22px); }
+    .value-display .val-num {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: var(--fs-val);
+      font-weight: 500;
+      color: white;
+      letter-spacing: 0.01em;
+      text-align: center;
+      transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), opacity 0.1s, color 0.2s;
+    }
+    .value-display .val-num.at-zero { color: #ef4444; }
+
+    @keyframes shake {
+      0%,100% { transform: translate(-50%,-50%) translateX(0); }
+      15%,75%  { transform: translate(-50%,-50%) translateX(-5px); }
+      30%,60%  { transform: translate(-50%,-50%) translateX(5px); }
+      45%      { transform: translate(-50%,-50%) translateX(-4px); }
+      90%      { transform: translate(-50%,-50%) translateX(2px); }
+    }
+    .value-display .val-num.shake { animation: shake 0.4s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+
+    .wheel-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+    }
+    .wheel-container:active { cursor: grabbing; }
+    .wheel { position: relative; width: 100%; height: 100%; border-radius: 50%; }
+    .tick {
+      position: absolute; inset: 0;
+      display: flex; justify-content: center;
+      overflow: hidden; border-radius: 50%;
+    }
+    .tick-line { position: absolute; top: 0; border-radius: 1px; }
+    .tick-line.minor { width: 1.5px; height: 18px; background: #e5e7eb; box-shadow: 0 0 3px 1px rgba(255,255,255,0.15); }
+    .tick-line.major { width: 2px;   height: 25px; background: #e5e7eb; box-shadow: 0 0 4px 1px rgba(255,255,255,0.22); }
+    .tick-line.super { width: 2px;   height: 32px; background: #e5e7eb; box-shadow: 0 0 5px 2px rgba(255,255,255,0.28); }
+    .color-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: calc(50% + 16px);
+      background: linear-gradient(to right, #3b82f6, #eab308);
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* ══════════════════════════════════════
+       HORIZONTAL SLIDER CARD
+    ══════════════════════════════════════ */
+    .card-horizontal {
+      position: relative;
+      width: var(--card-w);
+      height: var(--horiz-h);
+      background: #000;
+      border-radius: clamp(16px, 4vw, 24px);
+      padding: var(--horiz-pad) var(--horiz-pad) 0;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .card-horizontal::before,
+    .card-horizontal::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 64px;
+      z-index: 30;
+      pointer-events: none;
+    }
+    .card-horizontal::before { left: 0;  background: linear-gradient(to right, black 30%, transparent); }
+    .card-horizontal::after  { right: 0; background: linear-gradient(to left,  black 30%, transparent); }
+
+    .fade-bottom-h {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 20%;
+      background: linear-gradient(to bottom, transparent, black);
+      z-index: 30;
+      pointer-events: none;
+    }
+    .value-display-horizontal {
+      position: relative;
+      width: 100%;
+      height: 28px;
+      margin-bottom: clamp(6px, 1dvh, 10px);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .value-display-horizontal .label-h {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: var(--fs-label);
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .value-display-horizontal .label-h-before { right: calc(50% + 27px); }
+    .value-display-horizontal .label-h-after  { left:  calc(50% + 44px); }
+    .value-display-horizontal .val-num-h {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: var(--fs-val);
+      font-weight: 500;
+      color: white;
+      letter-spacing: 0.01em;
+      text-align: center;
+      transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), opacity 0.1s, color 0.2s;
+    }
+    .value-display-horizontal .label-h-pct {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: var(--fs-val);
+      font-weight: 500;
+      color: white;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .value-display-horizontal .val-num-h.at-zero,
+    .value-display-horizontal .label-h-pct.at-zero { color: #ef4444; }
+
+    @keyframes shake-h {
+      0%,100% { transform: translate(-50%,-50%) translateX(0); }
+      15%,75%  { transform: translate(-50%,-50%) translateX(-5px); }
+      30%,60%  { transform: translate(-50%,-50%) translateX(5px); }
+      45%      { transform: translate(-50%,-50%) translateX(-4px); }
+      90%      { transform: translate(-50%,-50%) translateX(2px); }
+    }
+    @keyframes shake-pct {
+      0%,100% { transform: translateY(-50%) translateX(0); }
+      15%,75%  { transform: translateY(-50%) translateX(-5px); }
+      30%,60%  { transform: translateY(-50%) translateX(5px); }
+      45%      { transform: translateY(-50%) translateX(-4px); }
+      90%      { transform: translateY(-50%) translateX(2px); }
+    }
+    .value-display-horizontal .val-num-h.shake   { animation: shake-h   0.4s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+    .value-display-horizontal .label-h-pct.shake { animation: shake-pct 0.4s cubic-bezier(0.36,0.07,0.19,0.97) both; }
+
+    .slider-container {
+      position: relative;
+      width: 100%;
+      flex: 1;
+      cursor: grab;
+      user-select: none;
+      touch-action: none;
+      overflow: hidden;
+    }
+    .slider-container:active { cursor: grabbing; }
+    .tick-strip {
+      position: absolute; top: 0;
+      left: calc(50% - 5px);
+      height: 100%;
+      display: flex;
+      align-items: flex-start;
+      padding-top: 4px;
+      will-change: transform;
+    }
+    .tick-slot { flex-shrink: 0; width: 10px; display: flex; justify-content: center; }
+    .tick-slot .tick-line.minor { width: 1.5px; height: 14px; box-shadow: 0 0 3px 1px rgba(255,255,255,0.15); }
+    .tick-slot .tick-line.major { width: 2px;   height: 20px; box-shadow: 0 0 4px 1px rgba(255,255,255,0.22); }
+    .tick-slot .tick-line.super { width: 2px;   height: 26px; box-shadow: 0 0 5px 2px rgba(255,255,255,0.28); }
+    .tick-slot .tick-line {
+      background: #e5e7eb;
+      transform-origin: center;
+      transition: transform 0.08s ease-out, opacity 0.08s ease-out;
+    }
+    .tick-slot .tick-line.landmark {
+      background: #fff;
+      box-shadow: 0 0 6px 2px rgba(255,255,255,0.6), 0 0 14px 4px rgba(255,255,255,0.25);
+    }
+    .indicator-horizontal {
+      position: absolute; top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 2px; height: 100%;
+      background: white;
+      border-radius: 999px;
+      z-index: 20;
+      pointer-events: none;
+      box-shadow: 0 0 3px 1px rgba(255,255,255,0.30), 0 0 8px 2px rgba(255,255,255,0.12);
+    }
+    /* ══════════════════════════════════════
+       TOP BAR
+    ══════════════════════════════════════ */
+  </style>
+</head>
+<body>
+
+<!-- ── Built with credit ── -->
+<div class="built-with">
+  <a href="https://www.linkedin.com/in/saleem-malik-pv/" target="_blank" rel="noopener">
+    <span class="built-with-label" id="built-with-label">built with <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-1px;opacity:0.7"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"/></svg> by <span class="built-with-name">malik-l0l</span></span>
+  </a>
+</div>
+
+<!-- ── Noise canvas ── -->
+<canvas id="noise-canvas" aria-hidden="true"></canvas>
+
+<!-- ── Display Card ── -->
+<div class="vH" id="vH">
+  <div class="vH-summary" id="vH-summary"></div>
+  <div class="vH-divider vH-divider-top"></div>
+  <div class="vH-head">
+    <div class="vH-pct" id="vH-pct"></div>
+    <div class="vH-head-r">
+      <div class="vH-badge" id="vH-badge"></div>
+      <div class="vH-frac" id="vH-frac"></div>
+    </div>
+  </div>
+  <div class="vH-scroll-outer" id="vH-scroll-outer">
+    <div class="vH-scroll-wrap" id="vH-scroll-wrap">
+      <div class="vH-cells" id="vH-cells"></div>
+    </div>
+  </div>
+  <div class="vH-divider"></div>
+  <div class="vH-carousel" id="vH-carousel">
+    <div class="vH-slides" id="vH-slides">
+      <div class="vH-slide" id="vH-slide-0"></div>
+      <div class="vH-slide" id="vH-slide-1"></div>
+    </div>
+    <div class="vH-swipe-hint" id="vH-swipe-hint">‹</div>
+  </div>
+  <div class="vH-dots" id="vH-dots">
+    <div class="vH-dot active" id="dot-0" data-idx="0"></div>
+    <div class="vH-dot"        id="dot-1" data-idx="1"></div>
+  </div>
+</div>
+
+<!-- ── Slider 1: Total Classes ── -->
+<div class="card">
+  <div class="indicator"></div>
+  <div class="value-display">
+    <span class="label label-before">Total</span>
+    <span id="val" class="val-num">12</span>
+    <span class="label label-after">classes</span>
+  </div>
+  <div class="wheel-container" id="wheelContainer">
+    <div class="wheel" id="wheel"></div>
+    <div class="color-overlay"></div>
+  </div>
+</div>
+
+<!-- ── Slider 2: Attended Classes ── -->
+<div class="card">
+  <div class="indicator"></div>
+  <div class="value-display">
+    <span class="label label-before">Attended</span>
+    <span id="val2" class="val-num">9</span>
+    <span class="label label-after">classes</span>
+  </div>
+  <div class="wheel-container" id="wheelContainer2">
+    <div class="wheel" id="wheel2"></div>
+    <div class="color-overlay"></div>
+  </div>
+</div>
+
+<!-- ── Slider 3: Target % ── -->
+<div class="card-horizontal">
+  <div class="value-display-horizontal">
+    <span class="label-h label-h-before">Target</span>
+    <span id="val3" class="val-num-h">75</span>
+    <span class="label-h label-h-pct">%</span>
+    <span class="label-h label-h-after">attendance</span>
+  </div>
+  <div class="slider-container" id="sliderContainer3">
+    <div class="tick-strip" id="tickStrip3"></div>
+    <div class="indicator-horizontal"></div>
+  </div>
+  <div class="fade-bottom-h"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════
+//  DEFAULTS
+// ════════════════════════════════════════════
+const DEFAULT_TOTAL    = 12;
+const DEFAULT_ATTENDED = 9;
+const DEFAULT_TARGET   = 75;
+const LS_KEY           = 'attn_calc_v1';
+
+// ════════════════════════════════════════════
+//  PERSISTENCE — localStorage
+// ════════════════════════════════════════════
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if (!s) return null;
+    const total    = Number.isInteger(s.total)    && s.total    >= 1  && s.total    <= 500 ? s.total    : null;
+    const attended = Number.isInteger(s.attended) && s.attended >= 0                        ? s.attended : null;
+    const target   = Number.isInteger(s.target)   && s.target   >= 40 && s.target   <= 100 ? s.target   : null;
+    if (total === null || attended === null || target === null) return null;
+    return { total, attended: Math.min(attended, total), target };
+  } catch { return null; }
+}
+function saveState() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify({ total: gTotal, attended: gAttended, target: gTarget })); } catch {}
+}
+
+// ════════════════════════════════════════════
+//  SHARED STATE (single source of truth)
+// ════════════════════════════════════════════
+const _saved  = loadState();
+let gTotal    = _saved ? _saved.total    : DEFAULT_TOTAL;
+let gAttended = _saved ? _saved.attended : DEFAULT_ATTENDED;
+let gTarget   = _saved ? _saved.target   : DEFAULT_TARGET;
+
+// ════════════════════════════════════════════
+//  CARD LOGIC
+// ════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const elPct    = $('vH-pct'),  elBadge  = $('vH-badge'), elFrac  = $('vH-frac');
+const elCells  = $('vH-cells'), elSlides = $('vH-slides'), elDots  = $('vH-dots');
+const elHint   = $('vH-swipe-hint'), elSummary = $('vH-summary');
+const elSlide0 = $('vH-slide-0'), elSlide1 = $('vH-slide-1');
+const elDot0   = $('dot-0'),      elDot1   = $('dot-1');
+const elOuter  = $('vH-scroll-outer'), elWrap = $('vH-scroll-wrap');
+const elCard   = $('vH'); // used for touch swipe
+
+let currentSlide = 0, totalSlides = 1, lastS = null, lastCase = 'above';
+
+function calc(total, attended, target) {
+  const pct = total ? Math.round(attended / total * 100) : 0;
+  if (target === 100 && attended < total) return { case:'impossible', pct, attended, total, target };
+  if (pct < target) {
+    let an = 0; while (Math.round((attended+an)/(total+an)*100) < target) an++;
+    let cn = 0; while (Math.round((attended+cn)/total*100) < target) cn++;
+    return { case:'below', pct, attended, total, target, attendNeeded:an, convinceNeeded:cn };
+  }
+  let b = 0; while (total+b > 0 && Math.round(attended/(total+b)*100) >= target) b++;
+  return { case:'above', pct, attended, total, target, safeBunks: Math.max(0, b-1) };
+}
+
+const COLS = {
+  above:      { main:'#22c55e', light:'rgba(34,197,94,0.18)',  text:'#4ade80' },
+  impossible: { main:'#a855f7', light:'rgba(168,85,247,0.18)', text:'#c084fc' },
+  below:      { main:'#ef4444', light:'rgba(239,68,68,0.18)',  text:'#f87171' }
+};
+const col = c => COLS[c] || COLS.below;
+
+function gradientColor(hex, t) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  const br = r*.12|0, bg2 = g*.12|0, bb = b*.12|0;
+  return `rgb(${br+(r-br)*t|0},${bg2+(g-bg2)*t|0},${bb+(b-bb)*t|0})`;
+}
+
+function buildSteps(s) {
+  if (s.case === 'impossible') return [];
+  const rows = [{ attended:s.attended, total:s.total, pct:s.pct, label:'now', isCurrent:true, isTarget:false }];
+  if (s.case === 'below') {
+    for (let i = 1; i <= s.attendNeeded; i++) {
+      const a = s.attended+i, tot = s.total+i, p = Math.round(a/tot*100);
+      rows.push({ attended:a, total:tot, pct:p, label:`+${i}`, isCurrent:false, isTarget:p>=s.target });
+      if (p >= s.target) break;
+    }
+  } else {
+    for (let i = 1; i <= s.safeBunks+1; i++) {
+      const tot = s.total+i, p = Math.round(s.attended/tot*100);
+      rows.push({ attended:s.attended, total:tot, pct:p, label:`-${i}`, isCurrent:false, isTarget:i===s.safeBunks });
+      if (p < s.target) break;
+    }
+    if (s.safeBunks === 0) rows[rows.length-1].isTarget = true;
+  }
+  return rows;
+}
+
+function buildConvinceSteps(s) {
+  const rows = [{ attended:s.attended, total:s.total, pct:s.pct, label:'now', isCurrent:true, isTarget:false }];
+  for (let i = 1; i <= s.convinceNeeded; i++) {
+    const a = s.attended+i, p = Math.round(a/s.total*100);
+    rows.push({ attended:a, total:s.total, pct:p, label:`+${i}`, isCurrent:false, isTarget:p>=s.target });
+    if (p >= s.target) break;
+  }
+  return rows;
+}
+
+function renderCells(steps, c) {
+  const intermediates = steps.filter(r => !r.isCurrent && !r.isTarget);
+  const count = intermediates.length;
+  const intermediateIdx = new Map(intermediates.map((r, i) => [r, i]));
+  return steps.map((row) => {
+    let t;
+    if (row.isCurrent) t = 0.08;
+    else if (row.isTarget) t = 1.0;
+    else {
+      const pos = intermediateIdx.get(row);
+      t = count <= 1 ? 0.5 : 0.22 + (pos / (count-1)) * 0.63;
+    }
+    const bg       = gradientColor(c.main, t);
+    const topColor = row.isCurrent ? 'rgba(255,255,255,0.55)' : row.isTarget ? c.text : 'rgba(255,255,255,0.7)';
+    const botColor = row.isCurrent ? 'rgba(255,255,255,0.45)' : row.isTarget ? c.text : 'rgba(255,255,255,0.6)';
+    const botLabel = row.isCurrent ? `${row.attended}/${row.total}` : row.label;
+    return `<div class="vH-cell-col${row.isTarget?' is-target':''}">
+      <div class="vH-cell-top" style="color:${topColor}">${row.pct}%</div>
+      <div class="vH-cell-sq"><div class="vH-cell-sq-inner" style="background:${bg}"></div></div>
+      <div class="vH-cell-bot" style="color:${botColor}">${botLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+function updateFrac(s, c, slideIdx) {
+  const from = `${s.attended}/${s.total}`;
+  if (s.case === 'impossible') {
+    const from = `${s.attended}/${s.total}`;
+    const toA  = s.total;
+    elFrac.innerHTML = `${from}<span class="frac-arrow">→</span><span class="frac-to" style="color:${c.text}">${toA}/${s.total}</span>`;
+    return;
+  }
+  let toA, toT;
+  if (s.case === 'above') {
+    toA = s.attended; toT = s.total + s.safeBunks;
+  } else if (slideIdx === 0) {
+    toA = s.attended + s.attendNeeded; toT = s.total + s.attendNeeded;
+  } else {
+    toA = s.attended + s.convinceNeeded; toT = s.total;
+  }
+  elFrac.innerHTML = `${from}<span class="frac-arrow">→</span><span class="frac-to" style="color:${c.text}">${toA}/${toT}</span>`;
+}
+
+function scrollToTarget() {
+  setTimeout(() => {
+    const target = elWrap.querySelector('.vH-cell-col.is-target');
+    if (!target) return;
+    const to = elWrap.scrollLeft + (target.getBoundingClientRect().left - elWrap.getBoundingClientRect().left) - elWrap.clientWidth/2 + target.offsetWidth/2;
+    elWrap.scrollTo({ left: Math.max(0, to), behavior:'smooth' });
+  }, 80);
+}
+
+function goToSlide(idx, s, c) {
+  currentSlide = idx;
+  elCells.innerHTML = renderCells(idx === 0 ? buildSteps(s) : buildConvinceSteps(s), c);
+  updateFrac(s, c, idx);
+  elSlides.style.transform = idx ? 'translateX(-50%)' : 'translateX(0%)';
+  elDot0.classList.toggle('active', idx === 0);
+  elDot1.classList.toggle('active', idx === 1);
+  scrollToTarget();
+}
+
+function updateCard(s) {
+  lastS = s; lastCase = s.case;
+  const c = col(s.case);
+  elPct.innerHTML = `${s.pct}<sup>%</sup>`;
+  elPct.style.color = c.text;
+  elBadge.style.cssText = `background:${c.light};color:${c.text}`;
+  elBadge.textContent = s.case==='above' ? `Above ${s.target}%` : s.case==='impossible' ? 'Impossible' : `Below ${s.target}%`;
+  elSummary.textContent = `${s.attended} of ${s.total} attended · target ${s.target}%`;
+  currentSlide = 0;
+  elSlides.style.transform = 'translateX(0%)';
+  elSlide1.innerHTML = ''; elSlide1.className = 'vH-slide';
+  elDot0.classList.add('active'); elDot1.classList.remove('active');
+  if (s.case === 'impossible') {
+    totalSlides = 1;
+    elSlides.classList.add('single'); elDot1.style.display = 'none'; elHint.style.display = 'none';
+    const convinceCount = s.total - s.attended;
+    elSlide0.innerHTML = `<div class="vH-action-row">
+      <div class="vH-action-icon" style="color:${c.text}">✦</div>
+      <div class="vH-action-text" style="color:rgba(255,255,255,0.4)">Can't reach 100% by attending — but convince your teacher to mark <strong style="color:${c.text}">${convinceCount} absent${convinceCount!==1?'s':''} as present</strong></div>
+    </div>`;
+    const impossibleSteps = [{ attended:s.attended, total:s.total, pct:s.pct, label:'now', isCurrent:true, isTarget:false }];
+    for (let i = 1; i <= convinceCount; i++) {
+      const a = s.attended + i, p = Math.round(a / s.total * 100);
+      impossibleSteps.push({ attended:a, total:s.total, pct:p, label:`+${i}`, isCurrent:false, isTarget:p >= 100 });
+      if (p >= 100) break;
+    }
+    elCells.innerHTML = renderCells(impossibleSteps, c);
+  } else if (s.case === 'above') {
+    totalSlides = 1;
+    elSlides.classList.add('single'); elDot1.style.display = 'none'; elHint.style.display = 'none';
+    elSlide0.innerHTML = `<div class="vH-action-row">
+      <div class="vH-action-icon" style="color:${c.text}">${s.safeBunks === 0 ? '!' : '✓'}</div>
+      <div class="vH-action-text">${s.safeBunks === 0 ? `<strong>Right on the edge</strong> — don't skip any` : `You can skip <strong>${s.safeBunks} class${s.safeBunks!==1?'es':''}</strong> safely`}</div>
+    </div>`;
+    elCells.innerHTML = renderCells(buildSteps(s), c);
+  } else {
+    totalSlides = 2;
+    elSlides.classList.remove('single'); elDot1.style.display = ''; elHint.style.display = '';
+    elSlide0.innerHTML = `<div class="vH-action-row">
+      <div class="vH-action-icon" style="color:${c.text}">↑</div>
+      <div class="vH-action-text">Attend <strong>${s.attendNeeded} more class${s.attendNeeded!==1?'es':''}</strong> to reach ${s.target}%</div>
+    </div>`;
+    elSlide1.innerHTML = `<div class="vH-action-row">
+      <div class="vH-action-icon" style="color:${c.text}">✦</div>
+      <div class="vH-action-text">Or convince teacher to mark <strong>${s.convinceNeeded} absent</strong> as present</div>
+    </div>`;
+    elCells.innerHTML = renderCells(buildSteps(s), c);
+  }
+  updateFrac(s, c, 0);
+  elWrap.scrollLeft = 0;
+  elOuter.classList.remove('scrolled', 'at-end');
+  setTimeout(() => { if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end'); }, 50);
+  scrollToTarget();
+  // Restart auto-scroll timer whenever the card re-renders
+  if (typeof resetAutoScroll === 'function') resetAutoScroll();
+}
+
+// Master update — called whenever any slider changes
+function onValuesChanged() {
+  gAttended = Math.min(gAttended, gTotal);
+  updateCard(calc(gTotal, gAttended, gTarget));
+  s2.clampToMax();
+  saveState();
+}
+
+// Scroll fade
+elOuter.classList.add('at-start');
+elWrap.addEventListener('scroll', () => {
+  const { scrollLeft, scrollWidth, clientWidth } = elWrap;
+  elOuter.classList.toggle('at-start', scrollLeft < 4);
+  elOuter.classList.toggle('scrolled', scrollLeft >= 4);
+  elOuter.classList.toggle('at-end',   scrollLeft + clientWidth >= scrollWidth - 4);
+}, { passive:true });
+
+// Dots nav
+elDots.addEventListener('click', e => {
+  const dot = e.target.closest('.vH-dot');
+  if (dot) goToSlide(+dot.dataset.idx, lastS, col(lastCase));
+});
+
+// Touch swipe
+let touchStartX = 0, touchStartY = 0, swipeState = 'idle', swipeTarget = null;
+elCard.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+  swipeState = 'idle'; swipeTarget = e.target;
+}, { passive:true });
+elCard.addEventListener('touchmove', e => {
+  if (swipeState !== 'idle') return;
+  const dx = e.touches[0].clientX - touchStartX;
+  const adx = Math.abs(dx), ady = Math.abs(e.touches[0].clientY - touchStartY);
+  if (adx < 6 && ady < 6) return;
+  if (elWrap.contains(swipeTarget)) {
+    const { scrollLeft, scrollWidth, clientWidth } = elWrap;
+    const atBoundary = (dx < 0 && scrollLeft + clientWidth >= scrollWidth - 2) || (dx > 0 && scrollLeft <= 2);
+    swipeState = (atBoundary && adx > ady) ? 'swiping' : 'scrolling';
+  } else {
+    swipeState = adx > ady ? 'swiping' : 'scrolling';
+  }
+}, { passive:true });
+elCard.addEventListener('touchend', e => {
+  if (swipeState !== 'swiping') { swipeState = 'idle'; return; }
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  swipeState = 'idle';
+  if (Math.abs(dx) < 20) return;
+  if (dx < 0 && currentSlide < totalSlides - 1) goToSlide(currentSlide + 1, lastS, col(lastCase));
+  if (dx > 0 && currentSlide > 0)               goToSlide(currentSlide - 1, lastS, col(lastCase));
+});
+
+// ════════════════════════════════════════════
+//  AUTO-SCROLL CAROUSEL WITH PROGRESS BAR
+// ════════════════════════════════════════════
+const CAROUSEL_INTERVAL = 4500; // ms
+let autoScrollRaf = null;
+let autoScrollStart = null;
+let autoScrollPaused = false;
+
+function getActiveDot() {
+  return currentSlide === 0 ? elDot0 : elDot1;
+}
+
+function setDotProgress(dot, fraction) {
+  dot.style.setProperty('--dot-progress', (fraction * 100).toFixed(2) + '%');
+}
+
+function resetDotProgress(dot) {
+  dot.style.setProperty('--dot-progress', '0%');
+}
+
+function startAutoScroll() {
+  if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf);
+  autoScrollStart = null;
+
+  function tick(now) {
+    if (totalSlides < 2) {
+      // Single-slide mode — nothing to do
+      autoScrollRaf = null;
+      return;
+    }
+    if (autoScrollPaused) {
+      autoScrollStart = now; // reset timer while paused
+      autoScrollRaf = requestAnimationFrame(tick);
+      return;
+    }
+    if (!autoScrollStart) autoScrollStart = now;
+    const elapsed = now - autoScrollStart;
+    const fraction = Math.min(elapsed / CAROUSEL_INTERVAL, 1);
+
+    // Drive the active (line) indicator progress
+    setDotProgress(getActiveDot(), fraction);
+
+    if (fraction >= 1) {
+      // Advance slide
+      const nextSlide = (currentSlide + 1) % totalSlides;
+      resetDotProgress(getActiveDot());
+      goToSlide(nextSlide, lastS, col(lastCase));
+      // reset timer for next slide
+      autoScrollStart = now;
+      autoScrollRaf = requestAnimationFrame(tick);
+      return;
+    }
+
+    autoScrollRaf = requestAnimationFrame(tick);
+  }
+
+  autoScrollRaf = requestAnimationFrame(tick);
+}
+
+function resetAutoScroll() {
+  resetDotProgress(elDot0);
+  resetDotProgress(elDot1);
+  startAutoScroll();
+}
+
+// Pause on user interaction, resume after 1.5s idle
+function pauseAutoScroll() {
+  autoScrollPaused = true;
+}
+function scheduleResume() {
+  pauseAutoScroll();
+  clearTimeout(window._autoScrollResumeTimer);
+  window._autoScrollResumeTimer = setTimeout(() => {
+    autoScrollPaused = false;
+    autoScrollStart = null; // restart timer from now
+  }, 1500);
+}
+
+// Hook into dot clicks
+elDots.addEventListener('click', () => scheduleResume());
+
+// Hook into touch swipes
+elCard.addEventListener('touchstart', () => pauseAutoScroll(), { passive: true });
+elCard.addEventListener('touchend',   () => scheduleResume(),  { passive: true });
+
+// Start the loop
+startAutoScroll();
+
+// ════════════════════════════════════════════
+//  SLIDER LOGIC
+// ════════════════════════════════════════════
+const TICK_COUNT = 100;
+const SNAP_ANGLE = 360 / TICK_COUNT;
+const RUBBER_MAX = 12;
+
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+function playTick() {
+  try {
+    const ctx = getAudioCtx();
+    [[900, 0.1], [450, 0.06]].forEach(([f, vol]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(vol, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.035);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + 0.035);
+    });
+  } catch(e) {}
+}
+function playLimitError() {
+  try {
+    const ctx = getAudioCtx();
+    // Two descending thuds — feels like a hard stop
+    [[180, 0.18, 0, 0.08], [120, 0.12, 0.07, 0.13]].forEach(([f, vol, delay, dur]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      const t = ctx.currentTime + delay;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + dur);
+    });
+  } catch(e) {}
+}
+function triggerLimitFeedback() {
+  playLimitError();
+  if (navigator.vibrate) navigator.vibrate([30, 20, 30]);
+}
+function triggerHaptic() { if (navigator.vibrate) navigator.vibrate([14, 4, 14]); }
+
+function setDisplayImmediate(valEl, val) {
+  valEl.textContent = val;
+  valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+  valEl.style.opacity   = '1';
+}
+
+function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinValue, onValueSettle, initialValue }) {
+  const settle = onValueSettle || (() => {});
+  const minVal = () => (getMinValue ? getMinValue() : 0);
+
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const tick = document.createElement('div');
+    tick.className = 'tick';
+    tick.style.transform = `rotate(${i * SNAP_ANGLE}deg)`;
+    const line = document.createElement('div');
+    line.className = 'tick-line ' + (i % 10 === 0 ? 'super' : i % 5 === 0 ? 'major' : 'minor');
+    tick.appendChild(line);
+    frag.appendChild(tick);
+  }
+  wheelEl.appendChild(frag);
+
+  const snapAngle = v => Math.round(Math.max(minVal(), Math.min(getMaxValue(), v)) / 1) * SNAP_ANGLE;
+
+  let accumulatedRotation = (initialValue - minVal()) * SNAP_ANGLE;
+  let isDragging = false, lastClientX = 0, lastMoveTime = 0, velocityDps = 0;
+  let momentumRAF = null, rubberAnchorX = null, rubberOffset = 0, rubberRafId = null;
+  let shakeDebounce = false, lastDisplayedValue = initialValue, lastTickValue = initialValue;
+
+  wheelEl.style.transform = `rotate(${-accumulatedRotation}deg)`;
+  setDisplayImmediate(valEl, initialValue);
+
+  const maxRot = () => getMaxValue() * SNAP_ANGLE;
+
+  function getValueFromRotation(rot) {
+    return Math.max(minVal(), Math.min(getMaxValue(), Math.round(rot / SNAP_ANGLE) + minVal()));
+  }
+  function applyVisualRotation(logical, extra = 0, animate = false) {
+    wheelEl.style.transition = animate ? 'transform 0.35s cubic-bezier(0.34,1.2,0.64,1)' : 'none';
+    wheelEl.style.transform  = `rotate(${-(logical + extra)}deg)`;
+  }
+  function updateDisplay(val) {
+    if (val === lastDisplayedValue) return;
+    if (Math.abs(val - lastTickValue) >= 1) { playTick(); triggerHaptic(); lastTickValue = val; }
+    valEl.style.transform = 'translate(-50%,-50%) scale(1.2)';
+    valEl.style.opacity   = '0.7';
+    setTimeout(() => {
+      valEl.textContent     = val;
+      valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+      valEl.style.opacity   = '1';
+    }, 60);
+    lastDisplayedValue = val;
+  }
+  function snapToNearest(rot) {
+    const c = Math.max(0, Math.min(maxRot(), rot));
+    return Math.round(c / SNAP_ANGLE) * SNAP_ANGLE;
+  }
+  function animateRubberReturn() {
+    if (rubberRafId) cancelAnimationFrame(rubberRafId);
+    const start = rubberOffset, base = accumulatedRotation, t0 = performance.now(), dur = 420;
+    function step(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      rubberOffset = start * (1 - (1 - Math.pow(1 - t, 3)));
+      applyVisualRotation(base, rubberOffset);
+      rubberRafId = t < 1 ? requestAnimationFrame(step) : (rubberOffset = 0, applyVisualRotation(base), null);
+    }
+    rubberRafId = requestAnimationFrame(step);
+  }
+  function triggerBoundaryFeedback() {
+    rubberOffset = -6; applyVisualRotation(0, rubberOffset);
+    setTimeout(animateRubberReturn, 30);
+  }
+  function finishMomentum(rot) {
+    const snapped = snapToNearest(rot);
+    accumulatedRotation = snapped;
+    applyVisualRotation(snapped, 0, true);
+    const v = getValueFromRotation(snapped);
+    updateDisplay(v);
+    settle(v);
+  }
+  function startMomentum(initialVel) {
+    if (momentumRAF) cancelAnimationFrame(momentumRAF);
+    if (Math.abs(initialVel) < 30) { finishMomentum(accumulatedRotation); return; }
+    let vel = initialVel, lastTime = performance.now();
+    function step(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      const newRot = accumulatedRotation + vel * dt;
+      if (newRot < 0) { accumulatedRotation = 0; applyVisualRotation(0); updateDisplay(minVal()); triggerBoundaryFeedback(); settle(minVal()); return; }
+      if (newRot > maxRot()) { finishMomentum(maxRot()); return; }
+      accumulatedRotation = newRot;
+      applyVisualRotation(accumulatedRotation);
+      updateDisplay(getValueFromRotation(accumulatedRotation));
+      vel *= 0.92;
+      momentumRAF = Math.abs(vel) > 15 ? requestAnimationFrame(step) : (finishMomentum(accumulatedRotation), null);
+    }
+    momentumRAF = requestAnimationFrame(step);
+  }
+  function onDragStart(clientX) {
+    if (momentumRAF) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
+    if (rubberRafId) { cancelAnimationFrame(rubberRafId); rubberRafId = null; }
+    rubberOffset = 0; rubberAnchorX = null; isDragging = true;
+    lastClientX = clientX; lastMoveTime = performance.now(); velocityDps = 0;
+    accumulatedRotation = snapToNearest(accumulatedRotation);
+  }
+  function onDragMove(clientX) {
+    if (!isDragging) return;
+    const now = performance.now();
+    const dt  = Math.max(now - lastMoveTime, 1);
+    const dx  = clientX - lastClientX;
+    const spd = Math.abs(dx) / dt;
+    const sens = 1.0 + 4.0 * Math.min(spd / 1.5, 1);
+    const delta = -dx * (SNAP_ANGLE / 10) * sens;
+    const desired = accumulatedRotation + delta;
+    if (desired < 0) {
+      accumulatedRotation = 0;
+      if (rubberAnchorX === null) { rubberAnchorX = clientX; settle(minVal()); }
+      rubberOffset = RUBBER_MAX * (1 - Math.exp(-Math.max(0, clientX - rubberAnchorX) / 40));
+      applyVisualRotation(0, rubberOffset); updateDisplay(minVal());
+      if (!shakeDebounce) {
+        shakeDebounce = true;
+        triggerLimitFeedback();
+        valEl.classList.add('at-zero', 'shake');
+        setTimeout(() => { valEl.classList.remove('shake'); setTimeout(() => valEl.classList.remove('at-zero'), 600); shakeDebounce = false; }, 420);
+      }
+    } else if (desired > maxRot()) {
+      accumulatedRotation = maxRot();
+      if (rubberAnchorX === null) { rubberAnchorX = clientX; settle(getMaxValue()); }
+      rubberOffset = -RUBBER_MAX * (1 - Math.exp(-Math.max(0, rubberAnchorX - clientX) / 40));
+      applyVisualRotation(maxRot(), rubberOffset); updateDisplay(getMaxValue());
+      if (!shakeDebounce) {
+        shakeDebounce = true;
+        triggerLimitFeedback();
+        valEl.classList.add('at-zero', 'shake');
+        setTimeout(() => { valEl.classList.remove('shake'); setTimeout(() => valEl.classList.remove('at-zero'), 600); shakeDebounce = false; }, 420);
+      }
+    } else {
+      rubberAnchorX = null; rubberOffset = 0;
+      accumulatedRotation = desired;
+      applyVisualRotation(accumulatedRotation); updateDisplay(getValueFromRotation(accumulatedRotation));
+    }
+    velocityDps = velocityDps * 0.6 + (-dx * (SNAP_ANGLE / 10) * sens / (dt / 1000)) * 0.4;
+    lastClientX = clientX; lastMoveTime = now;
+  }
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    if (accumulatedRotation === 0 && rubberOffset > 0) { rubberAnchorX = null; animateRubberReturn(); return; }
+    if (accumulatedRotation === maxRot() && rubberOffset < 0) { rubberAnchorX = null; animateRubberReturn(); return; }
+    rubberOffset = 0; rubberAnchorX = null;
+    startMomentum(velocityDps);
+  }
+  function clampToMax() {
+    const mx = maxRot();
+    if (accumulatedRotation > mx) {
+      accumulatedRotation = mx;
+      applyVisualRotation(mx, 0, true);
+      const v = getValueFromRotation(mx);
+      updateDisplay(v);
+      lastDisplayedValue = v;
+    }
+  }
+  containerEl.addEventListener('mousedown',  e => { onDragStart(e.clientX); e.preventDefault(); });
+  containerEl.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
+  return { onDragMove, onDragEnd, clampToMax, getCurrentValue: () => getValueFromRotation(accumulatedRotation) };
+}
+
+// ── Instantiate radial sliders ──
+const s1 = createRadialSlider({
+  wheelEl:     $('wheel'),
+  valEl:       $('val'),
+  containerEl: $('wheelContainer'),
+  getMaxValue: () => 500,
+  getMinValue: () => 1,
+  initialValue: gTotal,       // restored from localStorage or default
+  onValueSettle: v => { gTotal = v; onValuesChanged(); },
+});
+
+const s2 = createRadialSlider({
+  wheelEl:     $('wheel2'),
+  valEl:       $('val2'),
+  containerEl: $('wheelContainer2'),
+  getMaxValue: () => gTotal,
+  initialValue: gAttended,    // restored from localStorage or default
+  onValueSettle: v => { gAttended = v; onValuesChanged(); },
+});
+
+window.addEventListener('mousemove', e => { s1.onDragMove(e.clientX); s2.onDragMove(e.clientX); s2.clampToMax(); });
+window.addEventListener('mouseup',   ()  => { s1.onDragEnd(); s2.onDragEnd(); });
+window.addEventListener('touchmove', e => { s1.onDragMove(e.touches[0].clientX); s2.onDragMove(e.touches[0].clientX); s2.clampToMax(); }, { passive:true });
+window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); });
+
+// ── Horizontal slider (Target %) ──
+(function createHorizontalSlider() {
+  const TICK_COUNT_H = 61;
+  const MIN_VALUE_H  = 40;
+  const MAX_VALUE_H  = 100;
+  const TICK_PX      = 10;
+  const MAX_OFFSET   = (MAX_VALUE_H - MIN_VALUE_H) * TICK_PX;
+  const RUBBER_MAX_H = 28;
+  const PAD          = 20;
+
+  const container = $('sliderContainer3');
+  const strip     = $('tickStrip3');
+  const valEl     = $('val3');
+  const pctEl     = valEl.parentElement.querySelector('.label-h-pct');
+
+  function repositionLabels() {
+    pctEl.style.left = `calc(50% + ${valEl.offsetWidth / 2}px)`;
+  }
+
+  const LANDMARKS = new Set([75, 90]);
+
+  const frag2 = document.createDocumentFragment();
+  for (let i = -PAD; i < TICK_COUNT_H + PAD; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'tick-slot';
+    const line = document.createElement('div');
+    const mod = ((i % 10) + 10) % 10;
+    const val = i + MIN_VALUE_H;
+    const isLandmark = LANDMARKS.has(val);
+    line.className = 'tick-line ' + (mod === 0 ? 'super' : mod === 5 ? 'major' : 'minor') + (isLandmark ? ' landmark' : '');
+    if (i < 0 || i >= TICK_COUNT_H) line.style.opacity = '0.95';
+    slot.appendChild(line);
+    frag2.appendChild(slot);
+  }
+  strip.appendChild(frag2);
+  strip.style.marginLeft = `${-PAD * TICK_PX}px`;
+  const slots = strip.querySelectorAll('.tick-slot');
+
+  function apply3DEffect() {
+    const cw = container.offsetWidth, cx = cw / 2;
+    const rect = container.getBoundingClientRect();
+    slots.forEach(slot => {
+      const sr   = slot.getBoundingClientRect();
+      const dist = Math.abs(cx - (sr.left - rect.left + sr.width / 2));
+      const nd   = Math.min(dist / cx, 1);
+      const cv   = Math.pow(Math.cos(nd * Math.PI / 2.5), 0.7);
+      const line = slot.firstElementChild;
+      line.style.transform = `scaleY(${0.25 + cv * 0.75}) translateY(${nd * 8}px)`;
+      line.style.opacity   = line.classList.contains('landmark')
+        ? Math.max(0.55, 0.3 + cv * 0.7)
+        : 0.3 + cv * 0.7;
+    });
+  }
+
+  const getValueFromOffset = px => Math.max(MIN_VALUE_H, Math.min(MAX_VALUE_H, Math.round(px / TICK_PX) + MIN_VALUE_H));
+  const LANDMARK_OFFSETS = new Set([...LANDMARKS].map(v => (v - MIN_VALUE_H) * TICK_PX));
+  const MAGNET_RADIUS_PX = 18; // px within which landmark pulls the finger in
+
+  const snapToNearest = px => {
+    const clamped = Math.max(0, Math.min(MAX_OFFSET, px));
+    // Check if near a landmark — if so, snap to it
+    for (const lOff of LANDMARK_OFFSETS) {
+      if (Math.abs(clamped - lOff) <= MAGNET_RADIUS_PX) return lOff;
+    }
+    return Math.round(clamped / TICK_PX) * TICK_PX;
+  };
+
+  let offsetPx = (gTarget - MIN_VALUE_H) * TICK_PX;  // restored from localStorage or default
+  valEl.textContent = gTarget;
+
+  function applyVisualOffset(logical, extra = 0, animate = false) {
+    strip.style.transition = animate ? 'transform 0.35s cubic-bezier(0.34,1.2,0.64,1)' : 'none';
+    strip.style.transform  = `translateX(${-(logical + extra)}px)`;
+    requestAnimationFrame(apply3DEffect);
+  }
+
+  applyVisualOffset(offsetPx);
+
+  let isDragging = false, lastClientX = 0, lastMoveTime = 0, velocityPxS = 0;
+  let momentumRAF = null, rubberOffset = 0, rubberRafId = null;
+  let shakeDebounce = false, lastDisplayedValue = gTarget, lastTickValue = gTarget;
+
+  function updateDisplay(val) {
+    if (val === lastDisplayedValue) return;
+    if (Math.abs(val - lastTickValue) >= 1) { playTick(); triggerHaptic(); lastTickValue = val; }
+    valEl.style.transform = 'translate(-50%,-50%) scale(1.2)';
+    valEl.style.opacity   = '0.7';
+    gTarget = val;
+    onValuesChanged();
+    setTimeout(() => {
+      valEl.textContent     = val;
+      valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+      valEl.style.opacity   = '1';
+      repositionLabels();
+    }, 60);
+    lastDisplayedValue = val;
+  }
+
+  function animateRubberReturn() {
+    if (rubberRafId) cancelAnimationFrame(rubberRafId);
+    const start = rubberOffset, t0 = performance.now(), dur = 350;
+    function step(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      rubberOffset = t === 1 ? 0 : start * (1 - Math.pow(2, -10 * t));
+      applyVisualOffset(offsetPx, rubberOffset);
+      rubberRafId = t < 1 ? requestAnimationFrame(step) : (rubberOffset = 0, applyVisualOffset(offsetPx), null);
+    }
+    rubberRafId = requestAnimationFrame(step);
+  }
+
+  function triggerShakeH() {
+    if (shakeDebounce) return;
+    shakeDebounce = true;
+    triggerLimitFeedback();
+    valEl.classList.add('at-zero', 'shake'); pctEl.classList.add('at-zero', 'shake');
+    setTimeout(() => {
+      valEl.classList.remove('shake'); pctEl.classList.remove('shake');
+      setTimeout(() => { valEl.classList.remove('at-zero'); pctEl.classList.remove('at-zero'); }, 600);
+      shakeDebounce = false;
+    }, 420);
+  }
+
+  function triggerBoundaryFeedback(dir, boundaryVal) {
+    rubberOffset = dir * -8; applyVisualOffset(offsetPx, rubberOffset);
+    setTimeout(animateRubberReturn, 30);
+    if (boundaryVal !== undefined) { valEl.textContent = boundaryVal; lastDisplayedValue = boundaryVal; }
+    triggerShakeH();
+  }
+
+  function finishMomentum(px) {
+    const snapped = snapToNearest(px);
+    offsetPx = snapped; applyVisualOffset(snapped, 0, true);
+    updateDisplay(getValueFromOffset(snapped));
+  }
+  function startMomentum(initialVel) {
+    if (momentumRAF) cancelAnimationFrame(momentumRAF);
+    if (Math.abs(initialVel) < 30) { finishMomentum(offsetPx); return; }
+    let vel = initialVel, lastTime = performance.now();
+    function step(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.05);
+      lastTime = now;
+      const newOff = offsetPx + vel * dt;
+      if (newOff < 0)          { offsetPx = 0;          applyVisualOffset(0);          updateDisplay(MIN_VALUE_H); triggerBoundaryFeedback(-1, MIN_VALUE_H); return; }
+      if (newOff > MAX_OFFSET) { offsetPx = MAX_OFFSET; applyVisualOffset(MAX_OFFSET); updateDisplay(MAX_VALUE_H); triggerBoundaryFeedback(1,  MAX_VALUE_H); return; }
+      offsetPx = newOff; applyVisualOffset(offsetPx); updateDisplay(getValueFromOffset(offsetPx));
+      vel *= 0.92;
+      momentumRAF = Math.abs(vel) > 15 ? requestAnimationFrame(step) : (finishMomentum(offsetPx), null);
+    }
+    momentumRAF = requestAnimationFrame(step);
+  }
+  function onDragStart(clientX) {
+    if (momentumRAF) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
+    if (rubberRafId) { cancelAnimationFrame(rubberRafId); rubberRafId = null; }
+    rubberOffset = 0; isDragging = true;
+    lastClientX = clientX; lastMoveTime = performance.now(); velocityPxS = 0;
+    offsetPx = snapToNearest(offsetPx);
+  }
+  function onDragMove(clientX) {
+    if (!isDragging) return;
+    const now  = performance.now();
+    const dt   = Math.max(now - lastMoveTime, 1);
+    const dx   = clientX - lastClientX;
+    const sens = 1.0 + 4.0 * Math.min(Math.abs(dx) / dt / 1.5, 1);
+    const desired = offsetPx + (-dx * sens);
+    if (desired < 0) {
+      rubberOffset = -Math.min(RUBBER_MAX_H * (1 - Math.exp(-Math.abs(desired) / (RUBBER_MAX_H * 2))), RUBBER_MAX_H);
+      offsetPx = 0; applyVisualOffset(0, rubberOffset); updateDisplay(MIN_VALUE_H);
+      triggerShakeH();
+    } else if (desired > MAX_OFFSET) {
+      const over = desired - MAX_OFFSET;
+      rubberOffset = Math.min(RUBBER_MAX_H * (1 - Math.exp(-over / (RUBBER_MAX_H * 2))), RUBBER_MAX_H);
+      offsetPx = MAX_OFFSET; applyVisualOffset(MAX_OFFSET, rubberOffset); updateDisplay(MAX_VALUE_H);
+      triggerShakeH();
+    } else {
+      rubberOffset = 0; offsetPx = desired; applyVisualOffset(offsetPx); updateDisplay(getValueFromOffset(offsetPx));
+    }
+    velocityPxS = velocityPxS * 0.6 + (-dx * sens / (dt / 1000)) * 0.4;
+    lastClientX = clientX; lastMoveTime = now;
+  }
+  function onDragEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    if (offsetPx <= 0 && rubberOffset < 0) { offsetPx = 0; triggerBoundaryFeedback(-1); return; }
+    if (offsetPx >= MAX_OFFSET && rubberOffset > 0) { offsetPx = MAX_OFFSET; animateRubberReturn(); return; }
+    rubberOffset = 0; startMomentum(velocityPxS);
+  }
+
+  container.addEventListener('mousedown',  e => { onDragStart(e.clientX); e.preventDefault(); });
+  container.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
+  window.addEventListener('mousemove', e => { if (isDragging) onDragMove(e.clientX); });
+  window.addEventListener('mouseup',   ()  => onDragEnd());
+  window.addEventListener('touchmove', e => { if (isDragging) onDragMove(e.touches[0].clientX); });
+  window.addEventListener('touchend',  ()  => onDragEnd());
+
+  apply3DEffect();
+  repositionLabels();
+})();
+
+// ── Initial card render ──
+onValuesChanged();
+
+// ════════════════════════════════════════════
+//  INTRO ANIMATION — runs only on first visit
+//  (when no localStorage value exists)
+// ════════════════════════════════════════════
+(function runIntroAnimation() {
+  // Animate to saved values (fast) or defaults (normal speed)
+  const isFresh    = !_saved;
+  const toTotal    = gTotal;
+  const toAttended = gAttended;
+  const toTarget   = gTarget;
+
+  const SNAP_ANGLE = 360 / 100; // must match slider constant
+
+  // ── Easing ──
+  function easeOutExpo(t) {
+    return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+  }
+  function easeOutQuart(t) {
+    return 1 - Math.pow(1 - t, 4);
+  }
+
+  // ── Animate a radial wheel from 0 → target value ──
+  function animateWheel(wheelEl, valEl, targetVal, duration, onDone) {
+    const targetRot = targetVal * SNAP_ANGLE;
+    let start = null;
+    let lastVal = -1;
+
+    // Reset wheel to 0 before animating
+    wheelEl.style.transition = 'none';
+    wheelEl.style.transform  = 'rotate(0deg)';
+    valEl.textContent = '0';
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      function step(now) {
+        if (!start) start = now;
+        const t = Math.min((now - start) / duration, 1);
+        const eased = easeOutExpo(t);
+        const rot = eased * targetRot;
+        const val = Math.round(eased * targetVal);
+
+        wheelEl.style.transition = 'none';
+        wheelEl.style.transform  = `rotate(${-rot}deg)`;
+
+        if (val !== lastVal) {
+          valEl.textContent = val;
+          valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+          valEl.style.opacity   = '1';
+          lastVal = val;
+        }
+
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          wheelEl.style.transform = `rotate(${-targetRot}deg)`;
+          valEl.textContent = targetVal;
+          if (onDone) onDone();
+        }
+      }
+      requestAnimationFrame(step);
+    }));
+  }
+
+  // ── Animate the horizontal slider strip from 40 → target ──
+  function animateHorizontal(targetVal, duration, onDone) {
+    const MIN_VALUE_H = 40;
+    const TICK_PX     = 10;
+    const strip       = $('tickStrip3');
+    const valEl       = $('val3');
+    const targetOff   = (targetVal - MIN_VALUE_H) * TICK_PX;
+    let start = null;
+    let lastVal = -1;
+
+    // Reset to 40 before animating
+    strip.style.transition = 'none';
+    strip.style.transform  = 'translateX(0px)';
+    valEl.textContent = '40';
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      function step(now) {
+        if (!start) start = now;
+        const t = Math.min((now - start) / duration, 1);
+        const eased = easeOutQuart(t);
+        const off   = eased * targetOff;
+        const val   = MIN_VALUE_H + Math.round(eased * (targetVal - MIN_VALUE_H));
+
+        strip.style.transition = 'none';
+        strip.style.transform  = `translateX(${-off}px)`;
+
+        if (val !== lastVal) {
+          valEl.textContent = val;
+          lastVal = val;
+        }
+
+        if (t < 1) {
+          requestAnimationFrame(step);
+        } else {
+          strip.style.transform = `translateX(${-targetOff}px)`;
+          valEl.textContent = targetVal;
+          if (onDone) onDone();
+        }
+      }
+      requestAnimationFrame(step);
+    }));
+  }
+
+  // ── Pulse the display card to draw attention ──
+  function pulseCard() {
+    const card = $('vH');
+    card.style.transition = 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s ease';
+    card.style.transform  = 'scale(1.012)';
+    card.style.boxShadow  = '0 0 0 1.5px rgba(255,255,255,0.12)';
+    setTimeout(() => {
+      card.style.transform = 'scale(1)';
+      card.style.boxShadow = '';
+      setTimeout(() => { card.style.transition = ''; }, 350);
+    }, 320);
+  }
+
+  // Durations: normal on first visit, faster on returning visit
+  const d1 = isFresh ? 900 : 520;
+  const d2 = isFresh ? 750 : 420;
+  const d3 = isFresh ? 700 : 380;
+  const gap1 = isFresh ? 120 : 70;
+  const gap2 = isFresh ? 100 : 50;
+
+  // Small delay so the page paints first
+  setTimeout(() => {
+    animateWheel($('wheel'), $('val'), toTotal, d1, () => {
+      setTimeout(() => {
+        animateWheel($('wheel2'), $('val2'), toAttended, d2, () => {
+          setTimeout(() => {
+            animateHorizontal(toTarget, d3, () => {
+              pulseCard();
+            });
+          }, gap2);
+        });
+      }, gap1);
+    });
+  }, 380);
+})();
+
+// ── Canvas noise ──
+(function () {
+  const canvas = document.getElementById('noise-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  function resizeCanvas() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function drawNoise() {
+    const imageData = ctx.createImageData(canvas.width, canvas.height);
+    const buffer = new Uint32Array(imageData.data.buffer);
+    const len = buffer.length;
+    for (let i = 0; i < len; i++) {
+      if (Math.random() < 0.5) buffer[i] = 0xff000000;
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+
+  resizeCanvas();
+  drawNoise();
+  window.addEventListener('resize', () => { resizeCanvas(); drawNoise(); });
+})();
+// ── Built-with tagline cycler ──
+(function () {
+  const CREDIT_HTML = `built with <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:-1px;opacity:0.7"><path d="M12 21.593c-5.63-5.539-11-10.297-11-14.402 0-3.791 3.068-5.191 5.281-5.191 1.312 0 4.151.501 5.719 4.457 1.59-3.968 4.464-4.447 5.726-4.447 2.54 0 5.274 1.621 5.274 5.181 0 4.069-5.136 8.625-11 14.402z"/></svg> by <span class="built-with-name">malik-l0l</span>`;
+  const TAGLINES = [
+    'for those who calculate before they bunk',
+    'built so you can bunk',
+    'skip smarter, not harder',
+    'for the ones who never bunk blind',
+    'bunk responsibly',
+    'built to bunk better',
+    'built for the bunk-conscious',
+  ];
+
+  const el = document.getElementById('built-with-label');
+  const INTERVAL = 6000;
+  const FADE     = 1200;
+
+  // Interleave: credit, tagline[0], credit, tagline[1], ...
+  const sequence = [];
+  TAGLINES.forEach(t => { sequence.push({ html: CREDIT_HTML, isCredit: true }); sequence.push({ html: t, isCredit: false }); });
+  sequence.push({ html: CREDIT_HTML, isCredit: true }); // end on credit
+
+  let idx = 0;
+
+  function next() {
+    // fade out
+    el.classList.add('fade-out');
+    setTimeout(() => {
+      idx = (idx + 1) % sequence.length;
+      el.innerHTML = sequence[idx].html;
+      // fade in
+      el.classList.remove('fade-out');
+    }, FADE);
+  }
+
+  setInterval(next, INTERVAL);
+})();
+</script>
+</body>
+</html>
