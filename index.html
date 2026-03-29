@@ -414,7 +414,11 @@
       background: #000;
       border-radius: clamp(16px, 4vw, 24px);
       padding: var(--radial-pad);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      box-shadow:
+        0 20px 40px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.07),
+        inset 0 -1px 0 rgba(255,255,255,0.03),
+        inset 0 0 0 1px rgba(255,255,255,0.045);
       overflow: hidden;
       flex-shrink: 0;
     }
@@ -488,9 +492,10 @@
       cursor: grab;
       user-select: none;
       touch-action: none;
+      contain: layout style;
     }
     .wheel-container:active { cursor: grabbing; }
-    .wheel { position: relative; width: 100%; height: 100%; border-radius: 50%; }
+    .wheel { position: relative; width: 100%; height: 100%; border-radius: 50%; will-change: transform; }
     .tick {
       position: absolute; inset: 0;
       display: flex; justify-content: center;
@@ -519,7 +524,11 @@
       background: #000;
       border-radius: clamp(16px, 4vw, 24px);
       padding: var(--horiz-pad) var(--horiz-pad) 0;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      box-shadow:
+        0 20px 40px rgba(0,0,0,0.6),
+        inset 0 1px 0 rgba(255,255,255,0.07),
+        inset 0 -1px 0 rgba(255,255,255,0.03),
+        inset 0 0 0 1px rgba(255,255,255,0.045);
       overflow: hidden;
       display: flex;
       flex-direction: column;
@@ -612,6 +621,7 @@
       user-select: none;
       touch-action: none;
       overflow: hidden;
+      contain: layout style;
     }
     .slider-container:active { cursor: grabbing; }
     .tick-strip {
@@ -776,8 +786,12 @@ function loadState() {
     return { total, attended: Math.min(attended, total), target };
   } catch { return null; }
 }
+let _saveTimer = null;
 function saveState() {
-  try { localStorage.setItem(LS_KEY, JSON.stringify({ total: gTotal, attended: gAttended, target: gTarget })); } catch {}
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify({ total: gTotal, attended: gAttended, target: gTarget })); } catch {}
+  }, 300);
 }
 
 // ════════════════════════════════════════════
@@ -884,7 +898,6 @@ function renderCells(steps, c) {
 function updateFrac(s, c, slideIdx) {
   const from = `${s.attended}/${s.total}`;
   if (s.case === 'impossible') {
-    const from = `${s.attended}/${s.total}`;
     const toA  = s.total;
     elFrac.innerHTML = `${from}<span class="frac-arrow">→</span><span class="frac-to" style="color:${c.text}">${toA}/${s.total}</span>`;
     return;
@@ -972,8 +985,7 @@ function updateCard(s) {
   elOuter.classList.remove('scrolled', 'at-end');
   setTimeout(() => { if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end'); }, 50);
   scrollToTarget();
-  // Restart auto-scroll timer whenever the card re-renders
-  if (typeof resetAutoScroll === 'function') resetAutoScroll();
+  resetAutoScroll();
 }
 
 // Master update — called whenever any slider changes
@@ -985,13 +997,11 @@ function onValuesChanged() {
 }
 
 // Scroll fade
-elOuter.classList.add('at-start');
 elWrap.addEventListener('scroll', () => {
   const { scrollLeft, scrollWidth, clientWidth } = elWrap;
-  elOuter.classList.toggle('at-start', scrollLeft < 4);
   elOuter.classList.toggle('scrolled', scrollLeft >= 4);
   elOuter.classList.toggle('at-end',   scrollLeft + clientWidth >= scrollWidth - 4);
-}, { passive:true });
+}, { passive: true });
 
 // Dots nav
 elDots.addEventListener('click', e => {
@@ -1096,12 +1106,13 @@ function resetAutoScroll() {
 function pauseAutoScroll() {
   autoScrollPaused = true;
 }
+let _autoScrollResumeTimer = null;
 function scheduleResume() {
   pauseAutoScroll();
-  clearTimeout(window._autoScrollResumeTimer);
-  window._autoScrollResumeTimer = setTimeout(() => {
+  clearTimeout(_autoScrollResumeTimer);
+  _autoScrollResumeTimer = setTimeout(() => {
     autoScrollPaused = false;
-    autoScrollStart = null; // restart timer from now
+    autoScrollStart = null;
   }, 1500);
 }
 
@@ -1122,23 +1133,38 @@ const TICK_COUNT = 100;
 const SNAP_ANGLE = 360 / TICK_COUNT;
 const RUBBER_MAX = 12;
 
+// iOS detection — haptics only on iOS (Android vibration API is too laggy)
+const _isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
 let audioCtx = null;
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
+
+// Pre-baked AudioBuffer for tick sound — created once, reused every tick
+// Much cheaper than spawning new Oscillator+Gain nodes each time
+let _tickBuffer = null;
+function getTickBuffer(ctx) {
+  if (_tickBuffer) return _tickBuffer;
+  const dur = 0.035, len = Math.ceil(ctx.sampleRate * dur);
+  _tickBuffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = _tickBuffer.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    const t = i / ctx.sampleRate;
+    const env = Math.exp(-t / 0.012);
+    data[i] = (Math.sin(2 * Math.PI * 900 * t) * 0.1 + Math.sin(2 * Math.PI * 450 * t) * 0.06) * env;
+  }
+  return _tickBuffer;
+}
 function playTick() {
   try {
     const ctx = getAudioCtx();
-    [[900, 0.1], [450, 0.06]].forEach(([f, vol]) => {
-      const o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = 'sine'; o.frequency.value = f;
-      g.gain.setValueAtTime(vol, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.035);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + 0.035);
-    });
+    const src = ctx.createBufferSource();
+    src.buffer = getTickBuffer(ctx);
+    src.connect(ctx.destination);
+    src.start();
   } catch(e) {}
 }
 function playLimitError() {
@@ -1157,11 +1183,21 @@ function playLimitError() {
     });
   } catch(e) {}
 }
+
+// Haptic throttle — prevents flooding Android's vibration queue
+let _lastHapticTime = 0;
+function triggerHaptic() {
+  if (!_isIOS || !navigator.vibrate) return; // Android: audio-only, no vibration
+  const now = performance.now();
+  if (now - _lastHapticTime < 40) return; // max ~25 haptics/sec
+  _lastHapticTime = now;
+  navigator.vibrate(0); // flush any queued vibration first
+  navigator.vibrate(8); // single clean pulse
+}
 function triggerLimitFeedback() {
   playLimitError();
-  if (navigator.vibrate) navigator.vibrate([30, 20, 30]);
+  if (_isIOS && navigator.vibrate) navigator.vibrate([30, 20, 30]);
 }
-function triggerHaptic() { if (navigator.vibrate) navigator.vibrate([14, 4, 14]); }
 
 function setDisplayImmediate(valEl, val) {
   valEl.textContent = val;
@@ -1207,13 +1243,13 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
   function updateDisplay(val) {
     if (val === lastDisplayedValue) return;
     if (Math.abs(val - lastTickValue) >= 1) { playTick(); triggerHaptic(); lastTickValue = val; }
-    valEl.style.transform = 'translate(-50%,-50%) scale(1.2)';
-    valEl.style.opacity   = '0.7';
-    setTimeout(() => {
-      valEl.textContent     = val;
+    valEl.textContent     = val;
+    valEl.style.transform = 'translate(-50%,-50%) scale(1.08)';
+    valEl.style.opacity   = '0.85';
+    requestAnimationFrame(() => {
       valEl.style.transform = 'translate(-50%,-50%) scale(1)';
       valEl.style.opacity   = '1';
-    }, 60);
+    });
     lastDisplayedValue = val;
   }
   function snapToNearest(rot) {
@@ -1326,7 +1362,7 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
     }
   }
   containerEl.addEventListener('mousedown',  e => { onDragStart(e.clientX); e.preventDefault(); });
-  containerEl.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
+  containerEl.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
   return { onDragMove, onDragEnd, clampToMax, getCurrentValue: () => getValueFromRotation(accumulatedRotation) };
 }
 
@@ -1350,13 +1386,13 @@ const s2 = createRadialSlider({
   onValueSettle: v => { gAttended = v; onValuesChanged(); },
 });
 
-window.addEventListener('mousemove', e => { s1.onDragMove(e.clientX); s2.onDragMove(e.clientX); s2.clampToMax(); });
-window.addEventListener('mouseup',   ()  => { s1.onDragEnd(); s2.onDragEnd(); });
-window.addEventListener('touchmove', e => { s1.onDragMove(e.touches[0].clientX); s2.onDragMove(e.touches[0].clientX); s2.clampToMax(); }, { passive:true });
-window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); });
+window.addEventListener('mousemove', e => { s1.onDragMove(e.clientX); s2.onDragMove(e.clientX); s3.onDragMove(e.clientX); });
+window.addEventListener('mouseup',   ()  => { s1.onDragEnd(); s2.onDragEnd(); s3.onDragEnd(); });
+window.addEventListener('touchmove', e => { const x = e.touches[0].clientX; s1.onDragMove(x); s2.onDragMove(x); s3.onDragMove(x); }, { passive: true });
+window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); s3.onDragEnd(); });
 
 // ── Horizontal slider (Target %) ──
-(function createHorizontalSlider() {
+const s3 = (function createHorizontalSlider() {
   const TICK_COUNT_H = 61;
   const MIN_VALUE_H  = 40;
   const MAX_VALUE_H  = 100;
@@ -1393,19 +1429,24 @@ window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); })
   strip.style.marginLeft = `${-PAD * TICK_PX}px`;
   const slots = strip.querySelectorAll('.tick-slot');
 
+  let _cachedCW = 0;
   function apply3DEffect() {
-    const cw = container.offsetWidth, cx = cw / 2;
-    const rect = container.getBoundingClientRect();
-    slots.forEach(slot => {
-      const sr   = slot.getBoundingClientRect();
-      const dist = Math.abs(cx - (sr.left - rect.left + sr.width / 2));
-      const nd   = Math.min(dist / cx, 1);
-      const cv   = Math.pow(Math.cos(nd * Math.PI / 2.5), 0.7);
+    const cw = container.offsetWidth || _cachedCW;
+    _cachedCW = cw;
+    const cx = cw / 2;
+    // Strip starts at (PAD * TICK_PX) to the left of center (accounting for marginLeft),
+    // then is shifted by the current offsetPx transform. Compute slot centers purely from offsets.
+    const stripStartX = cx - offsetPx - (PAD * TICK_PX) - (strip.parentElement ? 0 : 0);
+    slots.forEach((slot, idx) => {
+      const slotCenter = stripStartX + idx * TICK_PX + TICK_PX / 2;
+      const dist = Math.abs(cx - slotCenter);
+      const nd = Math.min(dist / cx, 1);
+      const cv = Math.pow(Math.cos(nd * Math.PI / 2.5), 0.7);
       const line = slot.firstElementChild;
-      line.style.transform = `scaleY(${0.25 + cv * 0.75}) translateY(${nd * 8}px)`;
-      line.style.opacity   = line.classList.contains('landmark')
+      line.style.transform = `scaleY(${(0.25 + cv * 0.75).toFixed(3)}) translateY(${(nd * 8).toFixed(2)}px)`;
+      line.style.opacity   = (line.classList.contains('landmark')
         ? Math.max(0.55, 0.3 + cv * 0.7)
-        : 0.3 + cv * 0.7;
+        : 0.3 + cv * 0.7).toFixed(3);
     });
   }
 
@@ -1440,16 +1481,17 @@ window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); })
   function updateDisplay(val) {
     if (val === lastDisplayedValue) return;
     if (Math.abs(val - lastTickValue) >= 1) { playTick(); triggerHaptic(); lastTickValue = val; }
-    valEl.style.transform = 'translate(-50%,-50%) scale(1.2)';
-    valEl.style.opacity   = '0.7';
+    const prev = gTarget;
     gTarget = val;
-    onValuesChanged();
-    setTimeout(() => {
-      valEl.textContent     = val;
+    if (prev !== val) onValuesChanged();
+    valEl.textContent     = val;
+    valEl.style.transform = 'translate(-50%,-50%) scale(1.08)';
+    valEl.style.opacity   = '0.85';
+    requestAnimationFrame(() => {
       valEl.style.transform = 'translate(-50%,-50%) scale(1)';
       valEl.style.opacity   = '1';
       repositionLabels();
-    }, 60);
+    });
     lastDisplayedValue = val;
   }
 
@@ -1543,14 +1585,11 @@ window.addEventListener('touchend',  ()  => { s1.onDragEnd(); s2.onDragEnd(); })
   }
 
   container.addEventListener('mousedown',  e => { onDragStart(e.clientX); e.preventDefault(); });
-  container.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive:false });
-  window.addEventListener('mousemove', e => { if (isDragging) onDragMove(e.clientX); });
-  window.addEventListener('mouseup',   ()  => onDragEnd());
-  window.addEventListener('touchmove', e => { if (isDragging) onDragMove(e.touches[0].clientX); });
-  window.addEventListener('touchend',  ()  => onDragEnd());
+  container.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
 
   apply3DEffect();
   repositionLabels();
+  return { onDragMove, onDragEnd };
 })();
 
 // ── Initial card render ──
