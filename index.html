@@ -15,6 +15,16 @@
   <meta name="robots" content="index, follow" />
   <meta name="author" content="malik-l0l" />
 
+  <!-- ══ FAVICON ══ -->
+  <link rel="icon" type="image/png" href="/og-image.png" />
+  <link rel="apple-touch-icon" href="/og-image.png" />
+
+  <!-- ══ FONT PRECONNECT (eliminates render-blocking @import) ══ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" /></noscript>
+
   <!-- ══ OPEN GRAPH (Facebook / WhatsApp / LinkedIn) ══ -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://bunkulator.vercel.app/" />
@@ -108,7 +118,31 @@
   }
   </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap');
+    /* Font fallbacks with size-adjust to prevent CLS during font swap */
+    @font-face {
+      font-family: 'Plus Jakarta Sans Fallback';
+      src: local('Arial');
+      size-adjust: 103%;
+      ascent-override: 96%;
+      descent-override: 22%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'DM Sans Fallback';
+      src: local('Arial');
+      size-adjust: 100%;
+      ascent-override: 95%;
+      descent-override: 21%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'DM Mono Fallback';
+      src: local('Courier New');
+      size-adjust: 107%;
+      ascent-override: 90%;
+      descent-override: 23%;
+      line-gap-override: 0%;
+    }
 
     *,
     *::before,
@@ -123,7 +157,7 @@
       --card: #000;
       --border: rgba(255, 255, 255, 0.07);
       --t2: rgba(255, 255, 255, 0.5);
-      --mono: 'DM Mono', monospace;
+      --mono: 'DM Mono', 'DM Mono Fallback', monospace;
 
       /* ── Fluid layout tokens ──
          All sizing derives from actual viewport height so
@@ -178,7 +212,7 @@
         radial-gradient(ellipse 80% 55% at 50% 0%, rgba(255, 255, 255, 0.045) 0%, transparent 70%),
         radial-gradient(ellipse 60% 45% at 50% 100%, rgba(255, 255, 255, 0.025) 0%, transparent 70%),
         var(--bg);
-      font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
+      font-family: 'Plus Jakarta Sans', 'Plus Jakarta Sans Fallback', 'DM Sans', 'DM Sans Fallback', sans-serif;
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -268,7 +302,7 @@
     }
 
     .vH-pct {
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'DM Sans', 'DM Sans Fallback', sans-serif;
       font-size: var(--fs-pct);
       font-weight: 700;
       letter-spacing: -.05em;
@@ -1556,10 +1590,18 @@
 
     function scrollToTarget() {
       setTimeout(() => {
-        const target = elWrap.querySelector('.vH-cell-col.is-target');
-        if (!target) return;
-        const to = elWrap.scrollLeft + (target.getBoundingClientRect().left - elWrap.getBoundingClientRect().left) - elWrap.clientWidth / 2 + target.offsetWidth / 2;
-        elWrap.scrollTo({ left: Math.max(0, to), behavior: 'smooth' });
+        requestAnimationFrame(() => {
+          const target = elWrap.querySelector('.vH-cell-col.is-target');
+          if (!target) return;
+          // All reads together after layout — no forced reflow
+          const wrapRect = elWrap.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const targetW = target.offsetWidth;
+          const clientW = elWrap.clientWidth;
+          const currentScroll = elWrap.scrollLeft;
+          const to = currentScroll + (targetRect.left - wrapRect.left) - clientW / 2 + targetW / 2;
+          elWrap.scrollTo({ left: Math.max(0, to), behavior: 'smooth' });
+        });
       }, 80);
     }
 
@@ -1631,7 +1673,9 @@
       updateFrac(s, c, 0);
       elWrap.scrollLeft = 0;
       elOuter.classList.remove('scrolled', 'at-end');
-      setTimeout(() => { if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end'); }, 50);
+      requestAnimationFrame(() => {
+        if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end');
+      });
       scrollToTarget();
       resetAutoScroll();
     }
@@ -2073,7 +2117,9 @@
       const pctEl = valEl.parentElement.querySelector('.label-h-pct');
 
       function repositionLabels() {
-        pctEl.style.left = `calc(50% + ${valEl.offsetWidth / 2}px)`;
+        requestAnimationFrame(() => {
+          pctEl.style.left = `calc(50% + ${valEl.offsetWidth / 2}px)`;
+        });
       }
 
       const LANDMARKS = new Set([75, 90]);
@@ -2096,9 +2142,15 @@
       const slots = strip.querySelectorAll('.tick-slot');
 
       let _cachedCW = 0;
+      // Read container width once on init and on resize — never inside animation loop
+      function updateCachedWidth() {
+        _cachedCW = container.offsetWidth || _cachedCW;
+      }
+      updateCachedWidth();
+      window.addEventListener('resize', updateCachedWidth, { passive: true });
+
       function apply3DEffect() {
-        const cw = container.offsetWidth || _cachedCW;
-        _cachedCW = cw;
+        const cw = _cachedCW || container.offsetWidth;
         const cx = cw / 2;
         // Strip starts at (PAD * TICK_PX) to the left of center (accounting for marginLeft),
         // then is shifted by the current offsetPx transform. Compute slot centers purely from offsets.
