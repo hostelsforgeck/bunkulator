@@ -329,6 +329,106 @@
     }
     .vH-cell-col.is-target .vH-cell-sq { outline: 2px solid rgba(255,255,255,.5); outline-offset: 1px; }
 
+    /* ── Gap cell styles ── */
+    .vH-gap-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .vH-gap-above {
+      font-family: var(--mono);
+      font-size: var(--fs-cell);
+      font-weight: 600;
+      line-height: 1;
+      color: rgba(255,255,255,0.75);
+      white-space: nowrap;
+      min-height: 10px;
+      text-align: center;
+      letter-spacing: 0.02em;
+    }
+    .vH-gap-rect {
+      width: 82px;
+      height: var(--cell-sq);
+      border-radius: 4px;
+      border: 1.5px dashed rgba(255,255,255,0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+      transition: border-color 0.2s ease, opacity 0.2s ease;
+    }
+    .vH-gap-rect[data-gap-tap="0"] {
+      opacity: 0.5;
+      cursor: default;
+      width: 120px;
+    }
+    .vH-gap-rect[data-gap-tap="1"]:hover {
+      border-color: rgba(255,255,255,0.45);
+    }
+    .vH-gap-hint {
+      font-family: var(--mono);
+      font-size: 8px;
+      color: rgba(255,255,255,0.45);
+      letter-spacing: 0.04em;
+      z-index: 1;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+      text-align: center;
+      padding: 0 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    /* untappable gap: hint is the funny line, make it slightly more visible */
+    .vH-gap-rect[data-gap-tap="0"] .vH-gap-hint {
+      font-size: 7.5px;
+      color: rgba(255,255,255,0.32);
+      letter-spacing: 0.02em;
+      font-style: italic;
+    }
+    .vH-gap-rect.loading .vH-gap-hint { opacity: 0; }
+    .vH-gap-rect::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: var(--gap-bg, rgba(120,120,120,0.12));
+      z-index: 0;
+    }
+    .vH-gap-rect.loading::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--gap-shimmer, rgba(255,255,255,0.22)) 50%,
+        transparent 100%
+      );
+      background-size: 200% 100%;
+      animation: gap-shimmer 1.1s ease-in-out infinite;
+      z-index: 2;
+    }
+    @keyframes gap-shimmer {
+      0%   { background-position: -100% 0; }
+      100% { background-position:  200% 0; }
+    }
+    .vH-gap-below {
+      font-family: var(--mono);
+      font-size: var(--fs-cell);
+      font-weight: 400;
+      line-height: 1;
+      color: rgba(255,255,255,0.38);
+      white-space: nowrap;
+      min-height: 10px;
+      text-align: center;
+    }
+
     /* divider */
     .vH-divider { height: 1px; background: var(--border); margin: clamp(8px, 1.3dvh, 14px) 0 clamp(6px, 1dvh, 12px); }
     .vH-divider-top { margin-top: 0; margin-bottom: clamp(8px, 1.3dvh, 14px); }
@@ -819,6 +919,8 @@ let currentSlide = 0, totalSlides = 1, lastS = null, lastCase = 'above';
 function calc(total, attended, target) {
   const pct = total ? Math.round(attended / total * 100) : 0;
   if (target === 100 && attended < total) return { case:'impossible', pct, attended, total, target };
+  // All threshold checks use Math.round to match real-world display rounding.
+  // e.g. 76/102 rounds to 75%, so attending 2 more (not 4) is enough to show 75%.
   if (pct < target) {
     let an = 0; while (Math.round((attended+an)/(total+an)*100) < target) an++;
     let cn = 0; while (Math.round((attended+cn)/total*100) < target) cn++;
@@ -847,8 +949,9 @@ function buildSteps(s) {
   if (s.case === 'below') {
     for (let i = 1; i <= s.attendNeeded; i++) {
       const a = s.attended+i, tot = s.total+i, p = Math.round(a/tot*100);
-      rows.push({ attended:a, total:tot, pct:p, label:`+${i}`, isCurrent:false, isTarget:p>=s.target });
-      if (p >= s.target) break;
+      const reached = p >= s.target;
+      rows.push({ attended:a, total:tot, pct:p, label:`+${i}`, isCurrent:false, isTarget:reached });
+      if (reached) break;
     }
   } else {
     for (let i = 1; i <= s.safeBunks+1; i++) {
@@ -865,34 +968,151 @@ function buildConvinceSteps(s) {
   const rows = [{ attended:s.attended, total:s.total, pct:s.pct, label:'now', isCurrent:true, isTarget:false }];
   for (let i = 1; i <= s.convinceNeeded; i++) {
     const a = s.attended+i, p = Math.round(a/s.total*100);
-    rows.push({ attended:a, total:s.total, pct:p, label:`+${i}`, isCurrent:false, isTarget:p>=s.target });
-    if (p >= s.target) break;
+    const reached = p >= s.target;
+    rows.push({ attended:a, total:s.total, pct:p, label:`+${i}`, isCurrent:false, isTarget:reached });
+    if (reached) break;
   }
   return rows;
 }
 
+// ── Colour helper ──
+function cellColors(row, intermediateIdx, count, c) {
+  let t;
+  if (row.isCurrent) t = 0.08;
+  else if (row.isTarget) t = 1.0;
+  else {
+    const pos = intermediateIdx.get(row);
+    t = count <= 1 ? 0.5 : 0.22 + (pos / (count-1)) * 0.63;
+  }
+  return {
+    bg:       gradientColor(c.main, t),
+    topColor: row.isCurrent ? 'rgba(255,255,255,0.55)' : row.isTarget ? c.text : 'rgba(255,255,255,0.7)',
+    botColor: row.isCurrent ? 'rgba(255,255,255,0.45)' : row.isTarget ? c.text : 'rgba(255,255,255,0.6)',
+    botLabel: row.isCurrent ? `${row.attended}/${row.total}` : row.label,
+  };
+}
+
+function cellHTML(row, cols) {
+  return `<div class="vH-cell-col${row.isTarget?' is-target':''}">
+    <div class="vH-cell-top" style="color:${cols.topColor}">${row.pct}%</div>
+    <div class="vH-cell-sq"><div class="vH-cell-sq-inner" style="background:${cols.bg}"></div></div>
+    <div class="vH-cell-bot" style="color:${cols.botColor}">${cols.botLabel}</div>
+  </div>`;
+}
+
+// ── Virtualized renderer with gap cells ──
+// NEARBY = cells shown on each side of the gap before collapsing
+const NEARBY = 150;
+
 function renderCells(steps, c) {
+  if (!steps.length) return '';
+
   const intermediates = steps.filter(r => !r.isCurrent && !r.isTarget);
-  const count = intermediates.length;
+  const count         = intermediates.length;
   const intermediateIdx = new Map(intermediates.map((r, i) => [r, i]));
-  return steps.map((row) => {
-    let t;
-    if (row.isCurrent) t = 0.08;
-    else if (row.isTarget) t = 1.0;
-    else {
-      const pos = intermediateIdx.get(row);
-      t = count <= 1 ? 0.5 : 0.22 + (pos / (count-1)) * 0.63;
-    }
-    const bg       = gradientColor(c.main, t);
-    const topColor = row.isCurrent ? 'rgba(255,255,255,0.55)' : row.isTarget ? c.text : 'rgba(255,255,255,0.7)';
-    const botColor = row.isCurrent ? 'rgba(255,255,255,0.45)' : row.isTarget ? c.text : 'rgba(255,255,255,0.6)';
-    const botLabel = row.isCurrent ? `${row.attended}/${row.total}` : row.label;
-    return `<div class="vH-cell-col${row.isTarget?' is-target':''}">
-      <div class="vH-cell-top" style="color:${topColor}">${row.pct}%</div>
-      <div class="vH-cell-sq"><div class="vH-cell-sq-inner" style="background:${bg}"></div></div>
-      <div class="vH-cell-bot" style="color:${botColor}">${botLabel}</div>
-    </div>`;
-  }).join('');
+
+  // Total intermediate steps (all non-current, non-target)
+  const totalMiddle = count;
+
+  // Decide whether we need a gap
+  // Gap threshold: if middle steps > 300, we collapse
+  const GAP_THRESHOLD = 300;
+
+  if (totalMiddle <= GAP_THRESHOLD) {
+    // Render all cells normally
+    return steps.map(row => cellHTML(row, cellColors(row, intermediateIdx, count, c))).join('');
+  }
+
+  // We have > 300 middle steps — split into visible + gap + visible
+  // Visible on left side: current + first NEARBY middles
+  // Visible on right side: last NEARBY middles + target
+  const gapSize = totalMiddle - NEARBY * 2; // hidden step count
+
+  const leftVisible  = [steps[0], ...intermediates.slice(0, NEARBY)];
+  const rightVisible = [...intermediates.slice(-NEARBY), steps[steps.length - 1]];
+
+  // Build left HTML
+  const leftHTML = leftVisible.map(row => cellHTML(row, cellColors(row, intermediateIdx, count, c))).join('');
+
+  // Gap label info
+  const firstHidden = intermediates[NEARBY];
+  const lastHidden  = intermediates[intermediates.length - NEARBY - 1];
+  const aboveLabel  = `${firstHidden.pct}% → ${lastHidden.pct}%`;
+  const skipFirst   = intermediates[NEARBY].label;
+  const skipLast    = intermediates[intermediates.length - NEARBY - 1].label;
+  const belowLabel  = `${skipFirst} → ${skipLast}`;
+
+  // Gap color — average of first and last hidden cell
+  const colFirst = cellColors(firstHidden, intermediateIdx, count, c);
+  const colLast  = cellColors(lastHidden,  intermediateIdx, count, c);
+  const bgFirst  = colFirst.bg;
+  const bgLast   = colLast.bg;
+  const gapBg    = `linear-gradient(90deg, ${bgFirst}, ${bgLast})`;
+  const shimmer  = `rgba(255,255,255,0.25)`;
+
+  // Tappable if gap ≤ 2000
+  const tappable = gapSize <= 2000;
+  // Funny untappable hint — varies by how hopeless the gap is
+  function untappableHint(gapSize) {
+    if (gapSize > 40000) return "god help you";
+    if (gapSize > 20000) return "next lifetime";
+    if (gapSize > 10000) return "not this sem";
+    if (gapSize > 5000)  return "maybe next year";
+    return "bunk life";
+  }
+  const hintText = tappable ? 'tap to expand' : untappableHint(gapSize);
+
+  const gapHTML = `<div class="vH-gap-wrap" data-gap-wrap="1">
+    <div class="vH-gap-above">${aboveLabel}</div>
+    <div class="vH-gap-rect"
+         data-gap-tap="${tappable ? 1 : 0}"
+         data-gap-first="${NEARBY}"
+         data-gap-last="${intermediates.length - NEARBY - 1}"
+         style="--gap-bg:${gapBg};--gap-shimmer:${shimmer}">
+      <span class="vH-gap-hint">${hintText}</span>
+    </div>
+    <div class="vH-gap-below">${belowLabel}</div>
+  </div>`;
+
+  // Build right HTML
+  const rightHTML = rightVisible.map(row => cellHTML(row, cellColors(row, intermediateIdx, count, c))).join('');
+
+  return leftHTML + gapHTML + rightHTML;
+}
+
+// ── Gap expand handler — attached once, re-delegated on each rebuild ──
+function attachGapHandler(steps, c) {
+  const intermediates = steps.filter(r => !r.isCurrent && !r.isTarget);
+  const count         = intermediates.length;
+  const intermediateIdx = new Map(intermediates.map((r, i) => [r, i]));
+
+  elCells._gapHandler && elCells.removeEventListener('click', elCells._gapHandler);
+
+  const handler = (e) => {
+    const rect = e.target.closest('.vH-gap-rect');
+    if (!rect) return;
+    if (rect.dataset.gapTap !== '1') return;
+
+    // Shimmer
+    rect.classList.add('loading');
+
+    // Capture scroll position BEFORE rebuild so expand doesn't jump
+    const scrollBefore = elWrap.scrollLeft;
+
+    // After one paint frame, do the heavy DOM work
+    setTimeout(() => {
+      // Render all cells (no gap)
+      const intermediates2 = steps.filter(r => !r.isCurrent && !r.isTarget);
+      const count2 = intermediates2.length;
+      const idx2   = new Map(intermediates2.map((r, i) => [r, i]));
+      elCells.innerHTML = steps.map(row => cellHTML(row, cellColors(row, idx2, count2, c))).join('');
+      // Restore scroll — don't jump away from where the user tapped
+      elWrap.scrollLeft = scrollBefore;
+    }, 40);
+  };
+
+  elCells.addEventListener('click', handler);
+  elCells._gapHandler = handler;
 }
 
 function updateFrac(s, c, slideIdx) {
@@ -924,7 +1144,9 @@ function scrollToTarget() {
 
 function goToSlide(idx, s, c) {
   currentSlide = idx;
-  elCells.innerHTML = renderCells(idx === 0 ? buildSteps(s) : buildConvinceSteps(s), c);
+  const steps = idx === 0 ? buildSteps(s) : buildConvinceSteps(s);
+  elCells.innerHTML = renderCells(steps, c);
+  attachGapHandler(steps, c);
   updateFrac(s, c, idx);
   elSlides.style.transform = idx ? 'translateX(-50%)' : 'translateX(0%)';
   elDot0.classList.toggle('active', idx === 0);
@@ -959,6 +1181,7 @@ function updateCard(s) {
       if (p >= 100) break;
     }
     elCells.innerHTML = renderCells(impossibleSteps, c);
+    attachGapHandler(impossibleSteps, c);
   } else if (s.case === 'above') {
     totalSlides = 1;
     elSlides.classList.add('single'); elDot1.style.display = 'none'; elHint.style.display = 'none';
@@ -966,7 +1189,9 @@ function updateCard(s) {
       <div class="vH-action-icon" style="color:${c.text}">${s.safeBunks === 0 ? '!' : '✓'}</div>
       <div class="vH-action-text">${s.safeBunks === 0 ? `<strong>Right on the edge</strong> — don't skip any` : `You can skip <strong>${s.safeBunks} class${s.safeBunks!==1?'es':''}</strong> safely`}</div>
     </div>`;
-    elCells.innerHTML = renderCells(buildSteps(s), c);
+    const aboveSteps = buildSteps(s);
+    elCells.innerHTML = renderCells(aboveSteps, c);
+    attachGapHandler(aboveSteps, c);
   } else {
     totalSlides = 2;
     elSlides.classList.remove('single'); elDot1.style.display = ''; elHint.style.display = '';
@@ -978,7 +1203,9 @@ function updateCard(s) {
       <div class="vH-action-icon" style="color:${c.text}">✦</div>
       <div class="vH-action-text">Or convince professor to mark <strong>${s.convinceNeeded} absent</strong> as present</div>
     </div>`;
-    elCells.innerHTML = renderCells(buildSteps(s), c);
+    const belowSteps = buildSteps(s);
+    elCells.innerHTML = renderCells(belowSteps, c);
+    attachGapHandler(belowSteps, c);
   }
   updateFrac(s, c, 0);
   elWrap.scrollLeft = 0;
@@ -991,7 +1218,13 @@ function updateCard(s) {
 // Master update — called whenever any slider changes
 function onValuesChanged() {
   gAttended = Math.min(gAttended, gTotal);
-  updateCard(calc(gTotal, gAttended, gTarget));
+  const s = calc(gTotal, gAttended, gTarget);
+  if (lastS && s.total === lastS.total && s.attended === lastS.attended && s.target === lastS.target && s.case === lastS.case) {
+    s2.clampToMax();
+    saveState();
+    return;
+  }
+  updateCard(s);
   s2.clampToMax();
   saveState();
 }
@@ -1205,9 +1438,12 @@ function setDisplayImmediate(valEl, val) {
   valEl.style.opacity   = '1';
 }
 
-function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinValue, onValueSettle, initialValue }) {
+function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinValue, onValueSettle, initialValue, tickOffset }) {
   const settle = onValueSettle || (() => {});
   const minVal = () => (getMinValue ? getMinValue() : 0);
+  // tickOffset: cosmetic ticks before the real minimum (dead zone).
+  // e.g. tickOffset=1 renders a major-0 tick before the hard minimum of 1.
+  const tOff = tickOffset || 0;
 
   const frag = document.createDocumentFragment();
   for (let i = 0; i < TICK_COUNT; i++) {
@@ -1223,7 +1459,8 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
 
   const snapAngle = v => Math.round(Math.max(minVal(), Math.min(getMaxValue(), v)) / 1) * SNAP_ANGLE;
 
-  let accumulatedRotation = (initialValue - minVal()) * SNAP_ANGLE;
+  // rot=0 is the cosmetic tick; rot=tOff*SNAP_ANGLE is the real minimum value.
+  let accumulatedRotation = (initialValue - minVal() + tOff) * SNAP_ANGLE;
   let isDragging = false, lastClientX = 0, lastMoveTime = 0, velocityDps = 0;
   let momentumRAF = null, rubberAnchorX = null, rubberOffset = 0, rubberRafId = null;
   let shakeDebounce = false, lastDisplayedValue = initialValue, lastTickValue = initialValue;
@@ -1231,10 +1468,12 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
   wheelEl.style.transform = `rotate(${-accumulatedRotation}deg)`;
   setDisplayImmediate(valEl, initialValue);
 
-  const maxRot = () => getMaxValue() * SNAP_ANGLE;
+  // Max rotation accounts for the offset ticks prepended before the minimum.
+  const maxRot = () => (getMaxValue() - minVal() + tOff) * SNAP_ANGLE;
 
   function getValueFromRotation(rot) {
-    return Math.max(minVal(), Math.min(getMaxValue(), Math.round(rot / SNAP_ANGLE) + minVal()));
+    const raw = Math.round(rot / SNAP_ANGLE) - tOff + minVal();
+    return Math.max(minVal(), Math.min(getMaxValue(), raw));
   }
   function applyVisualRotation(logical, extra = 0, animate = false) {
     wheelEl.style.transition = animate ? 'transform 0.35s cubic-bezier(0.34,1.2,0.64,1)' : 'none';
@@ -1253,7 +1492,8 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
     lastDisplayedValue = val;
   }
   function snapToNearest(rot) {
-    const c = Math.max(0, Math.min(maxRot(), rot));
+    const minRot = tOff * SNAP_ANGLE;
+    const c = Math.max(minRot, Math.min(maxRot(), rot));
     return Math.round(c / SNAP_ANGLE) * SNAP_ANGLE;
   }
   function animateRubberReturn() {
@@ -1268,7 +1508,8 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
     rubberRafId = requestAnimationFrame(step);
   }
   function triggerBoundaryFeedback() {
-    rubberOffset = -6; applyVisualRotation(0, rubberOffset);
+    const minRot = tOff * SNAP_ANGLE;
+    rubberOffset = -6; applyVisualRotation(minRot, rubberOffset);
     setTimeout(animateRubberReturn, 30);
   }
   function finishMomentum(rot) {
@@ -1287,7 +1528,8 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
       const dt = Math.min((now - lastTime) / 1000, 0.05);
       lastTime = now;
       const newRot = accumulatedRotation + vel * dt;
-      if (newRot < 0) { accumulatedRotation = 0; applyVisualRotation(0); updateDisplay(minVal()); triggerBoundaryFeedback(); settle(minVal()); return; }
+      const minRot = tOff * SNAP_ANGLE;
+      if (newRot < minRot) { accumulatedRotation = minRot; applyVisualRotation(minRot); updateDisplay(minVal()); triggerBoundaryFeedback(); settle(minVal()); return; }
       if (newRot > maxRot()) { finishMomentum(maxRot()); return; }
       accumulatedRotation = newRot;
       applyVisualRotation(accumulatedRotation);
@@ -1313,11 +1555,12 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
     const sens = 1.0 + 4.0 * Math.min(spd / 1.5, 1);
     const delta = -dx * (SNAP_ANGLE / 10) * sens;
     const desired = accumulatedRotation + delta;
-    if (desired < 0) {
-      accumulatedRotation = 0;
+    const minRot = tOff * SNAP_ANGLE; // hard boundary: real minimum position
+    if (desired < minRot) {
+      accumulatedRotation = minRot;
       if (rubberAnchorX === null) { rubberAnchorX = clientX; settle(minVal()); }
       rubberOffset = RUBBER_MAX * (1 - Math.exp(-Math.max(0, clientX - rubberAnchorX) / 40));
-      applyVisualRotation(0, rubberOffset); updateDisplay(minVal());
+      applyVisualRotation(minRot, rubberOffset); updateDisplay(minVal());
       if (!shakeDebounce) {
         shakeDebounce = true;
         triggerLimitFeedback();
@@ -1346,7 +1589,8 @@ function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinVa
   function onDragEnd() {
     if (!isDragging) return;
     isDragging = false;
-    if (accumulatedRotation === 0 && rubberOffset > 0) { rubberAnchorX = null; animateRubberReturn(); return; }
+    const minRot = tOff * SNAP_ANGLE;
+    if (accumulatedRotation === minRot && rubberOffset > 0) { rubberAnchorX = null; animateRubberReturn(); return; }
     if (accumulatedRotation === maxRot() && rubberOffset < 0) { rubberAnchorX = null; animateRubberReturn(); return; }
     rubberOffset = 0; rubberAnchorX = null;
     startMomentum(velocityDps);
@@ -1373,6 +1617,7 @@ const s1 = createRadialSlider({
   containerEl: $('wheelContainer'),
   getMaxValue: () => 500,
   getMinValue: () => 1,
+  tickOffset:  1,          // cosmetic major-0 tick before the real min of 1
   initialValue: gTotal,       // restored from localStorage or default
   onValueSettle: v => { gTotal = v; onValuesChanged(); },
 });
@@ -1616,24 +1861,26 @@ onValuesChanged();
     return 1 - Math.pow(1 - t, 4);
   }
 
-  // ── Animate a radial wheel from 0 → target value ──
-  function animateWheel(wheelEl, valEl, targetVal, duration, onDone) {
+  // ── Animate a radial wheel from startVal → targetVal ──
+  function animateWheel(wheelEl, valEl, targetVal, duration, onDone, startVal) {
+    const sVal   = (startVal !== undefined) ? startVal : 0;
+    const startRot  = sVal * SNAP_ANGLE;
     const targetRot = targetVal * SNAP_ANGLE;
     let start = null;
     let lastVal = -1;
 
-    // Reset wheel to 0 before animating
+    // Reset wheel to startVal before animating
     wheelEl.style.transition = 'none';
-    wheelEl.style.transform  = 'rotate(0deg)';
-    valEl.textContent = '0';
+    wheelEl.style.transform  = `rotate(${-startRot}deg)`;
+    valEl.textContent = String(sVal);
 
     requestAnimationFrame(() => requestAnimationFrame(() => {
       function step(now) {
         if (!start) start = now;
         const t = Math.min((now - start) / duration, 1);
         const eased = easeOutExpo(t);
-        const rot = eased * targetRot;
-        const val = Math.round(eased * targetVal);
+        const rot = startRot + eased * (targetRot - startRot);
+        const val = Math.round(sVal + eased * (targetVal - sVal));
 
         wheelEl.style.transition = 'none';
         wheelEl.style.transform  = `rotate(${-rot}deg)`;
@@ -1722,6 +1969,7 @@ onValuesChanged();
 
   // Small delay so the page paints first
   setTimeout(() => {
+    // wheel (s1) has tickOffset=1: physical start is at 1*SNAP_ANGLE, so animate from 1
     animateWheel($('wheel'), $('val'), toTotal, d1, () => {
       setTimeout(() => {
         animateWheel($('wheel2'), $('val2'), toAttended, d2, () => {
@@ -1732,7 +1980,7 @@ onValuesChanged();
           }, gap2);
         });
       }, gap1);
-    });
+    }, 1);
   }, 380);
 })();
 
