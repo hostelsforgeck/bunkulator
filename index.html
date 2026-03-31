@@ -1190,6 +1190,10 @@
       z-index: 10;
       mix-blend-mode: normal;
       pointer-events: none;
+      /* iOS Safari fix: prevent black background flash */
+      background: transparent;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
     }
   </style>
 </head>
@@ -1241,8 +1245,15 @@
   <div class="vH-wrapper">
 
     <!-- ── Bunku the Bunny mascot ── -->
-    <video id="bunku-mascot" class="bunku-mascot" src="bunku_the_bunny.mp4" muted playsinline
-      preload="auto" aria-hidden="true"></video>
+    <video id="bunku-mascot" class="bunku-mascot" muted playsinline
+      preload="metadata" aria-hidden="true" disablepictureinpicture>
+      <!-- HEVC with alpha for iOS Safari (transparent background support) -->
+      <source src="bunku_the_bunny.mov" type='video/mp4; codecs="hvc1"'>
+      <!-- VP9 WebM with alpha for Android / Chrome -->
+      <source src="bunku_the_bunny.webm" type="video/webm">
+      <!-- Fallback MP4 -->
+      <source src="bunku_the_bunny.mp4" type="video/mp4">
+    </video>
 
     <!-- ── Display Card ── -->
     <div class="vH" id="vH" aria-label="Attendance Calculator Result">
@@ -2487,11 +2498,16 @@
       const video = document.getElementById('bunku-mascot');
       if (!video) return;
 
+      // Detect iOS Safari (has strict autoplay + currentTime-before-play glitch)
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
       // Start frozen on frame 0
       video.pause();
-      video.currentTime = 0;
+      if (!isIOS) video.currentTime = 0; // skip on iOS — causes black flash
 
       let scheduled = false;
+      let isPlaying = false;
 
       function scheduleNext() {
         if (scheduled) return;
@@ -2502,18 +2518,26 @@
 
       function playOnce() {
         scheduled = false;
-        video.currentTime = 0;
-        video.play().catch(() => {}); // catch in case browser blocks autoplay
+        if (isPlaying) return;
+        // On iOS: reset only AFTER pausing (not before play) to avoid black frame
+        if (!isIOS) video.currentTime = 0;
+        const p = video.play();
+        if (p && p.catch) p.catch(() => {}); // catch in case browser blocks autoplay
       }
 
       // When clip nears end, freeze and schedule the next wave
       video.addEventListener('timeupdate', () => {
         if (video.duration && video.currentTime >= video.duration - 0.05) {
+          isPlaying = false;
           video.pause();
-          video.currentTime = 0;
+          // Reset currentTime AFTER pausing to avoid iOS black flash
+          setTimeout(() => { video.currentTime = 0; }, 50);
           scheduleNext();
         }
       });
+
+      video.addEventListener('playing', () => { isPlaying = true; });
+      video.addEventListener('pause', () => { isPlaying = false; });
 
       // Greet on load after a short delay, then go idle
       setTimeout(playOnce, 1500);

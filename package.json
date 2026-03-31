@@ -2,7 +2,7 @@
   "name": "bunkulator",
   "version": "1.0.0",
   "scripts": {
-    "build": "mkdir -p dist && html-minifier-terser index.html -o dist/index.html --collapse-whitespace --remove-comments --minify-css true --minify-js true && cp bunku_the_bunny.mp4 og-image.png robots.txt sitemap.xml googleb39cc6ccea63aaf9.html dist/"
+    "build": "mkdir -p dist && html-minifier-terser index.html -o dist/index.html --collapse-whitespace --remove-comments --minify-css true --minify-js true && cp bunku_the_bunny.mp4 bunku_the_bunny.webm bunku_the_bunny.mov og-image.png robots.txt sitemap.xml googleb39cc6ccea63aaf9.html dist/"
   },
   "devDependencies": {
     "html-minifier-terser": "^7.2.0"
