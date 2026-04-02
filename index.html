@@ -2123,11 +2123,22 @@
       const valEl = $('val3');
       const pctEl = valEl.parentElement.querySelector('.label-h-pct');
 
-      function repositionLabels() {
-        requestAnimationFrame(() => {
-          pctEl.style.left = `calc(50% + ${valEl.offsetWidth / 2}px)`;
-        });
+      // Cache label width — reading offsetWidth mid-animation causes forced reflow
+      let _cachedValW = 0;
+      function updateCachedValWidth() {
+        // Only read offsetWidth outside the animation loop
+        _cachedValW = valEl.offsetWidth || _cachedValW;
       }
+      window.addEventListener('resize', updateCachedValWidth, { passive: true });
+
+      function repositionLabels() {
+        // Use cached width — no layout read inside animation loop
+        if (_cachedValW > 0) {
+          pctEl.style.left = `calc(50% + ${_cachedValW / 2}px)`;
+        }
+      }
+      // Initial measure (outside animation loop, safe to read)
+      requestAnimationFrame(() => { updateCachedValWidth(); repositionLabels(); });
 
       const LANDMARKS = new Set([75, 90]);
 
@@ -2159,20 +2170,38 @@
       function apply3DEffect() {
         const cw = _cachedCW || container.offsetWidth;
         const cx = cw / 2;
-        // Strip starts at (PAD * TICK_PX) to the left of center (accounting for marginLeft),
-        // then is shifted by the current offsetPx transform. Compute slot centers purely from offsets.
-        const stripStartX = cx - offsetPx - (PAD * TICK_PX) - (strip.parentElement ? 0 : 0);
-        slots.forEach((slot, idx) => {
+        const stripStartX = cx - offsetPx - (PAD * TICK_PX);
+
+        // Only process slots whose center is within the visible container width
+        // This avoids touching the ~70% of slots that are off-screen each frame
+        const visibleHalf = cx + TICK_PX; // a little beyond edges for smooth entry
+        const slotCount = slots.length;
+
+        for (let idx = 0; idx < slotCount; idx++) {
           const slotCenter = stripStartX + idx * TICK_PX + TICK_PX / 2;
           const dist = Math.abs(cx - slotCenter);
+
+          // Skip slots that are entirely off-screen — set them once to hidden state
+          if (dist > cx + TICK_PX * 2) {
+            // Only write if needed (avoid touching DOM for already-hidden slots)
+            const line = slots[idx].firstElementChild;
+            if (line._visible !== false) {
+              line.style.transform = 'scaleY(0.25) translateY(8px)';
+              line.style.opacity = line.classList.contains('landmark') ? '0.55' : '0.3';
+              line._visible = false;
+            }
+            continue;
+          }
+
           const nd = Math.min(dist / cx, 1);
           const cv = Math.pow(Math.cos(nd * Math.PI / 2.5), 0.7);
-          const line = slot.firstElementChild;
+          const line = slots[idx].firstElementChild;
           line.style.transform = `scaleY(${(0.25 + cv * 0.75).toFixed(3)}) translateY(${(nd * 8).toFixed(2)}px)`;
           line.style.opacity = (line.classList.contains('landmark')
             ? Math.max(0.55, 0.3 + cv * 0.7)
             : 0.3 + cv * 0.7).toFixed(3);
-        });
+          line._visible = true;
+        }
       }
 
       const getValueFromOffset = px => Math.max(MIN_VALUE_H, Math.min(MAX_VALUE_H, Math.round(px / TICK_PX) + MIN_VALUE_H));
@@ -2191,10 +2220,22 @@
       let offsetPx = (gTarget - MIN_VALUE_H) * TICK_PX;  // restored from localStorage or default
       valEl.textContent = gTarget;
 
+      let _rafPending = false;
+      let _pendingLogical = offsetPx, _pendingExtra = 0, _pendingAnimate = false;
+
       function applyVisualOffset(logical, extra = 0, animate = false) {
-        strip.style.transition = animate ? 'transform 0.35s cubic-bezier(0.34,1.2,0.64,1)' : 'none';
-        strip.style.transform = `translateX(${-(logical + extra)}px)`;
-        requestAnimationFrame(apply3DEffect);
+        _pendingLogical = logical;
+        _pendingExtra = extra;
+        _pendingAnimate = animate;
+        if (!_rafPending) {
+          _rafPending = true;
+          requestAnimationFrame(() => {
+            _rafPending = false;
+            strip.style.transition = _pendingAnimate ? 'transform 0.35s cubic-bezier(0.34,1.2,0.64,1)' : 'none';
+            strip.style.transform = `translateX(${-(_pendingLogical + _pendingExtra)}px)`;
+            apply3DEffect();
+          });
+        }
       }
 
       applyVisualOffset(offsetPx);
@@ -2212,11 +2253,12 @@
         valEl.textContent = val;
         valEl.style.transform = 'translate(-50%,-50%) scale(1.08)';
         valEl.style.opacity = '0.85';
+        // Use a microtask-style double-rAF only for the visual bounce; no layout reads
         requestAnimationFrame(() => {
           valEl.style.transform = 'translate(-50%,-50%) scale(1)';
           valEl.style.opacity = '1';
-          repositionLabels();
         });
+        repositionLabels();
         lastDisplayedValue = val;
       }
 
@@ -2282,9 +2324,9 @@
       function onDragMove(clientX) {
         if (!isDragging) return;
         const now = performance.now();
-        const dt = Math.max(now - lastMoveTime, 1);
+        const dt = Math.max(now - lastMoveTime, 4); // clamp dt to 4ms min (was 1ms — too aggressive)
         const dx = clientX - lastClientX;
-        const sens = 1.0 + 4.0 * Math.min(Math.abs(dx) / dt / 1.5, 1);
+        const sens = 1.0 + 2.5 * Math.min(Math.abs(dx) / dt / 1.5, 1); // cap multiplier at 3.5× (was 5×)
         const desired = offsetPx + (-dx * sens);
         if (desired < 0) {
           rubberOffset = -Math.min(RUBBER_MAX_H * (1 - Math.exp(-Math.abs(desired) / (RUBBER_MAX_H * 2))), RUBBER_MAX_H);
