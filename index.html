@@ -22,8 +22,13 @@
   <!-- ══ FONT PRECONNECT (eliminates render-blocking @import) ══ -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" media="print" onload="this.media='all'" />
-  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" /></noscript>
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap"
+    media="print" onload="this.media='all'" />
+  <noscript>
+    <link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" />
+  </noscript>
 
   <!-- ══ OPEN GRAPH (Facebook / WhatsApp / LinkedIn) ══ -->
   <meta property="og:type" content="website" />
@@ -127,6 +132,7 @@
       descent-override: 22%;
       line-gap-override: 0%;
     }
+
     @font-face {
       font-family: 'DM Sans Fallback';
       src: local('Arial');
@@ -135,6 +141,7 @@
       descent-override: 21%;
       line-gap-override: 0%;
     }
+
     @font-face {
       font-family: 'DM Mono Fallback';
       src: local('Courier New');
@@ -1180,20 +1187,16 @@
 
     .bunku-mascot {
       position: absolute;
+      display: block;
+      /* ← add this */
       width: clamp(62px, 15vw, 90px);
-      height: auto;
+      height: calc(clamp(62px, 15vw, 90px) * (360 / 638));
+      /* ← replace height: auto */
       right: clamp(8px, 2vw, 14px);
-      /* Negative clamp: most-negative = min, least-negative = max.
-         At ~390–580px wide, 15vw ≈ 58–87px, so we anchor top to
-         half the mascot height so it always sits on the card edge. */
       top: calc(clamp(62px, 15vw, 90px) * -0.50);
       z-index: 10;
       mix-blend-mode: normal;
       pointer-events: none;
-      /* iOS Safari fix: prevent black background flash */
-      background: transparent;
-      -webkit-transform: translateZ(0);
-      transform: translateZ(0);
     }
   </style>
 </head>
@@ -1245,15 +1248,8 @@
   <div class="vH-wrapper">
 
     <!-- ── Bunku the Bunny mascot ── -->
-    <video id="bunku-mascot" class="bunku-mascot" muted playsinline
-      preload="metadata" aria-hidden="true" disablepictureinpicture>
-      <!-- HEVC with alpha for iOS Safari (transparent background support) -->
-      <source src="bunku_the_bunny.mov" type='video/mp4; codecs="hvc1"'>
-      <!-- VP9 WebM with alpha for Android / Chrome -->
-      <source src="bunku_the_bunny.webm" type="video/webm">
-      <!-- Fallback MP4 -->
-      <source src="bunku_the_bunny.mp4" type="video/mp4">
-    </video>
+    <!-- ── Bunku the Bunny mascot ── -->
+    <canvas id="bunku-mascot" class="bunku-mascot" width="638" height="360" aria-hidden="true"></canvas>
 
     <!-- ── Display Card ── -->
     <div class="vH" id="vH" aria-label="Attendance Calculator Result">
@@ -2493,55 +2489,7 @@
       drawNoise();
       window.addEventListener('resize', () => { resizeCanvas(); drawNoise(); });
     })();
-    // ── Bunku mascot — idle-triggered animation ──
-    (function () {
-      const video = document.getElementById('bunku-mascot');
-      if (!video) return;
 
-      // Detect iOS Safari (has strict autoplay + currentTime-before-play glitch)
-      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
-        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-      // Start frozen on frame 0
-      video.pause();
-      if (!isIOS) video.currentTime = 0; // skip on iOS — causes black flash
-
-      let scheduled = false;
-      let isPlaying = false;
-
-      function scheduleNext() {
-        if (scheduled) return;
-        scheduled = true;
-        // Wave again after 4–6 seconds (randomized so it feels alive)
-        setTimeout(playOnce, 4000 + Math.random() * 2000);
-      }
-
-      function playOnce() {
-        scheduled = false;
-        if (isPlaying) return;
-        // On iOS: reset only AFTER pausing (not before play) to avoid black frame
-        if (!isIOS) video.currentTime = 0;
-        const p = video.play();
-        if (p && p.catch) p.catch(() => {}); // catch in case browser blocks autoplay
-      }
-
-      // When clip nears end, freeze and schedule the next wave
-      video.addEventListener('timeupdate', () => {
-        if (video.duration && video.currentTime >= video.duration - 0.05) {
-          isPlaying = false;
-          video.pause();
-          // Reset currentTime AFTER pausing to avoid iOS black flash
-          setTimeout(() => { video.currentTime = 0; }, 50);
-          scheduleNext();
-        }
-      });
-
-      video.addEventListener('playing', () => { isPlaying = true; });
-      video.addEventListener('pause', () => { isPlaying = false; });
-
-      // Greet on load after a short delay, then go idle
-      setTimeout(playOnce, 1500);
-    })();
 
     // ── Built-with tagline cycler ──
     (function () {
@@ -2559,7 +2507,7 @@
         'the calculator your professor fears',
         'because guessing is for amateurs',
         'your attendance, your rules',
-        'attendance sorted. now go sleep.',        
+        'attendance sorted. now go sleep.',
         'for the ones who never bunk blind',
         'your shortcut to skipping safely',
         'bunk responsibly',
@@ -2595,6 +2543,7 @@
       setInterval(next, INTERVAL);
     })();
   </script>
+  <script defer src="bunku-mascot.js"></script>
   <script defer src="/_vercel/insights/script.js"></script>
 </body>
 
