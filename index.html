@@ -755,6 +755,7 @@
         inset 0 0 0 1px rgba(255, 255, 255, 0.045);
       overflow: hidden;
       flex-shrink: 0;
+      contain: layout style;
     }
 
     .card::after {
@@ -947,6 +948,7 @@
       display: flex;
       flex-direction: column;
       flex-shrink: 0;
+      contain: layout style;
     }
 
     .card-horizontal::before,
@@ -1198,6 +1200,103 @@
       mix-blend-mode: normal;
       pointer-events: none;
     }
+
+    /* ══════════════════════════════════════
+       COACH MARK OVERLAY
+    ══════════════════════════════════════ */
+    #coach-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      pointer-events: auto;
+    }
+
+    #coach-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    #coach-tooltip {
+      position: absolute;
+      background: #fff;
+      color: #111;
+      border-radius: 12px;
+      padding: 11px 15px;
+      max-width: 220px;
+      font-family: 'DM Sans', 'DM Sans Fallback', sans-serif;
+      font-size: 13px;
+      line-height: 1.45;
+      font-weight: 500;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+      z-index: 9001;
+    }
+
+    #coach-tooltip .coach-title {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 3px;
+      color: #111;
+    }
+
+    #coach-tooltip .coach-body {
+      color: #444;
+      font-weight: 400;
+    }
+
+    #coach-arrow {
+      position: absolute;
+      width: 0;
+      height: 0;
+      pointer-events: none;
+      z-index: 9001;
+    }
+
+    #coach-step-indicator {
+      position: absolute;
+      bottom: max(52px, env(safe-area-inset-bottom, 0px) + 52px);
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      pointer-events: none;
+      z-index: 9001;
+    }
+
+    .coach-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transition: all 0.25s ease;
+    }
+
+    .coach-dot.active {
+      width: 14px;
+      border-radius: 3px;
+      background: #fff;
+    }
+
+    #coach-skip {
+      position: absolute;
+      bottom: max(18px, env(safe-area-inset-bottom, 0px) + 18px);
+      left: 50%;
+      transform: translateX(-50%);
+      font-family: 'DM Mono', 'DM Mono Fallback', monospace;
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 0.06em;
+      pointer-events: auto;
+      cursor: pointer;
+      padding: 6px 14px;
+      z-index: 9001;
+      white-space: nowrap;
+    }
+
   </style>
 </head>
 
@@ -1283,7 +1382,7 @@
   </div><!-- end .vH-wrapper -->
 
   <!-- ── Slider 1: Total Classes ── -->
-  <div class="card">
+  <div class="card" id="coach-card-1">
     <div class="indicator"></div>
     <div class="value-display">
       <span class="label label-before">Total</span>
@@ -1297,7 +1396,7 @@
   </div>
 
   <!-- ── Slider 2: Attended Classes ── -->
-  <div class="card">
+  <div class="card" id="coach-card-2">
     <div class="indicator"></div>
     <div class="value-display">
       <span class="label label-before">Attended</span>
@@ -1311,7 +1410,7 @@
   </div>
 
   <!-- ── Slider 3: Target % ── -->
-  <div class="card-horizontal">
+  <div class="card-horizontal" id="coach-card-horizontal">
     <div class="value-display-horizontal">
       <span class="label-h label-h-before">Target</span>
       <span id="val3" class="val-num-h">75</span>
@@ -1323,6 +1422,18 @@
       <div class="indicator-horizontal"></div>
     </div>
     <div class="fade-bottom-h"></div>
+  </div>
+
+  <!-- ── Coach Mark Overlay ── -->
+  <div id="coach-overlay" style="display:none;" aria-hidden="true">
+    <canvas id="coach-canvas"></canvas>
+    <div id="coach-tooltip">
+      <div class="coach-title" id="coach-title"></div>
+      <div class="coach-body" id="coach-body"></div>
+    </div>
+    <svg id="coach-arrow" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"></svg>
+    <div id="coach-step-indicator"></div>
+    <div id="coach-skip">tap anywhere to continue</div>
   </div>
 
   <script>
@@ -1936,6 +2047,8 @@
       let isDragging = false, lastClientX = 0, lastMoveTime = 0, velocityDps = 0;
       let momentumRAF = null, rubberAnchorX = null, rubberOffset = 0, rubberRafId = null;
       let shakeDebounce = false, lastDisplayedValue = initialValue, lastTickValue = initialValue;
+      // rAF throttle — ensures onDragMove work runs at most once per frame
+      let _dragRafPending = false, _pendingDragX = 0;
 
       wheelEl.style.transform = `rotate(${-accumulatedRotation}deg)`;
       setDisplayImmediate(valEl, initialValue);
@@ -1957,10 +2070,11 @@
         valEl.textContent = val;
         valEl.style.transform = 'translate(-50%,-50%) scale(1.08)';
         valEl.style.opacity = '0.85';
-        requestAnimationFrame(() => {
+        // setTimeout(0) is cheaper than nesting a new rAF inside the drag rAF
+        setTimeout(() => {
           valEl.style.transform = 'translate(-50%,-50%) scale(1)';
           valEl.style.opacity = '1';
-        });
+        }, 0);
         lastDisplayedValue = val;
       }
       function snapToNearest(rot) {
@@ -2018,7 +2132,7 @@
         lastClientX = clientX; lastMoveTime = performance.now(); velocityDps = 0;
         accumulatedRotation = snapToNearest(accumulatedRotation);
       }
-      function onDragMove(clientX) {
+      function _processDragMove(clientX) {
         if (!isDragging) return;
         const now = performance.now();
         const dt = Math.max(now - lastMoveTime, 1);
@@ -2057,6 +2171,16 @@
         }
         velocityDps = velocityDps * 0.6 + (-dx * (SNAP_ANGLE / 10) * sens / (dt / 1000)) * 0.4;
         lastClientX = clientX; lastMoveTime = now;
+      }
+      function onDragMove(clientX) {
+        if (!isDragging) return;
+        _pendingDragX = clientX;
+        if (_dragRafPending) return; // already have a frame queued — just update the target X
+        _dragRafPending = true;
+        requestAnimationFrame(() => {
+          _dragRafPending = false;
+          _processDragMove(_pendingDragX);
+        });
       }
       function onDragEnd() {
         if (!isDragging) return;
@@ -2174,17 +2298,15 @@
 
         // Only process slots whose center is within the visible container width
         // This avoids touching the ~70% of slots that are off-screen each frame
-        const visibleHalf = cx + TICK_PX; // a little beyond edges for smooth entry
         const slotCount = slots.length;
 
         for (let idx = 0; idx < slotCount; idx++) {
           const slotCenter = stripStartX + idx * TICK_PX + TICK_PX / 2;
           const dist = Math.abs(cx - slotCenter);
+          const line = slots[idx].firstElementChild;
 
           // Skip slots that are entirely off-screen — set them once to hidden state
           if (dist > cx + TICK_PX * 2) {
-            // Only write if needed (avoid touching DOM for already-hidden slots)
-            const line = slots[idx].firstElementChild;
             if (line._visible !== false) {
               line.style.transform = 'scaleY(0.25) translateY(8px)';
               line.style.opacity = line.classList.contains('landmark') ? '0.55' : '0.3';
@@ -2195,11 +2317,20 @@
 
           const nd = Math.min(dist / cx, 1);
           const cv = Math.pow(Math.cos(nd * Math.PI / 2.5), 0.7);
-          const line = slots[idx].firstElementChild;
-          line.style.transform = `scaleY(${(0.25 + cv * 0.75).toFixed(3)}) translateY(${(nd * 8).toFixed(2)}px)`;
-          line.style.opacity = (line.classList.contains('landmark')
+          const newTransform = `scaleY(${(0.25 + cv * 0.75).toFixed(3)}) translateY(${(nd * 8).toFixed(2)}px)`;
+          const newOpacity = (line.classList.contains('landmark')
             ? Math.max(0.55, 0.3 + cv * 0.7)
             : 0.3 + cv * 0.7).toFixed(3);
+
+          // Only write to DOM if value actually changed — avoids style invalidation
+          if (line._cachedTransform !== newTransform) {
+            line.style.transform = newTransform;
+            line._cachedTransform = newTransform;
+          }
+          if (line._cachedOpacity !== newOpacity) {
+            line.style.opacity = newOpacity;
+            line._cachedOpacity = newOpacity;
+          }
           line._visible = true;
         }
       }
@@ -2243,6 +2374,8 @@
       let isDragging = false, lastClientX = 0, lastMoveTime = 0, velocityPxS = 0;
       let momentumRAF = null, rubberOffset = 0, rubberRafId = null;
       let shakeDebounce = false, lastDisplayedValue = gTarget, lastTickValue = gTarget;
+      // rAF throttle for horizontal drag
+      let _hDragRafPending = false, _hPendingDragX = 0;
 
       function updateDisplay(val) {
         if (val === lastDisplayedValue) return;
@@ -2253,11 +2386,11 @@
         valEl.textContent = val;
         valEl.style.transform = 'translate(-50%,-50%) scale(1.08)';
         valEl.style.opacity = '0.85';
-        // Use a microtask-style double-rAF only for the visual bounce; no layout reads
-        requestAnimationFrame(() => {
+        // setTimeout(0) is cheaper than nesting a new rAF inside the drag rAF
+        setTimeout(() => {
           valEl.style.transform = 'translate(-50%,-50%) scale(1)';
           valEl.style.opacity = '1';
-        });
+        }, 0);
         repositionLabels();
         lastDisplayedValue = val;
       }
@@ -2321,7 +2454,7 @@
         lastClientX = clientX; lastMoveTime = performance.now(); velocityPxS = 0;
         offsetPx = snapToNearest(offsetPx);
       }
-      function onDragMove(clientX) {
+      function _processHDragMove(clientX) {
         if (!isDragging) return;
         const now = performance.now();
         const dt = Math.max(now - lastMoveTime, 4); // clamp dt to 4ms min (was 1ms — too aggressive)
@@ -2343,6 +2476,16 @@
         velocityPxS = velocityPxS * 0.6 + (-dx * sens / (dt / 1000)) * 0.4;
         lastClientX = clientX; lastMoveTime = now;
       }
+      function onDragMove(clientX) {
+        if (!isDragging) return;
+        _hPendingDragX = clientX;
+        if (_hDragRafPending) return; // already have a frame queued
+        _hDragRafPending = true;
+        requestAnimationFrame(() => {
+          _hDragRafPending = false;
+          _processHDragMove(_hPendingDragX);
+        });
+      }
       function onDragEnd() {
         if (!isDragging) return;
         isDragging = false;
@@ -2361,6 +2504,391 @@
 
     // ── Initial card render ──
     onValuesChanged();
+
+    // ════════════════════════════════════════════
+    //  TAP-WITHOUT-DRAG SHAKE HINT
+    //  Detects a tap (no meaningful drag) on each
+    //  slider container and shakes the wheel/strip
+    //  once per session to hint "spin me".
+    // ════════════════════════════════════════════
+    (function initTapShakeHint() {
+      const LS_TAP_HINT = 'bunku_tap_hint_shown';
+      // Only once per session (not persisted — clears on tab close)
+      let shownThisSession = false;
+
+      // ── Sine-wave rAF hint ──
+      // Drives a single full oscillation: left → centre → right → centre
+      // using sin(t * 2π) so velocity is zero at both peaks (natural pendulum).
+      // amplitude: wheel = 18deg (5 ticks × 3.6deg), strip = 50px (5 ticks × 10px)
+      // duration: 1100ms — slow enough to read, fast enough to feel alive.
+      const HINT_DURATION = 1100; // ms
+
+      function sineHint(applyFn) {
+        if (shownThisSession) return;
+        shownThisSession = true;
+        const t0 = performance.now();
+        function frame(now) {
+          const raw = (now - t0) / HINT_DURATION;          // 0 → 1
+          if (raw >= 1) { applyFn(0); return; }             // settled — restore exactly
+          // sin(raw × 2π) gives one full left→right→left cycle, zero at both ends
+          const wave = Math.sin(raw * Math.PI * 2);
+          // Apply envelope: fade amplitude in quickly, taper out gently
+          // This prevents a hard start and ensures clean settle
+          const env  = Math.sin(raw * Math.PI);             // 0 → 1 → 0 bell curve
+          applyFn(wave * env);
+          requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      // SNAP_ANGLE = 3.6 deg/tick; amplitude = 5 ticks
+      const HINT_DEG     = 18;   // 5 ticks × 3.6 deg
+      const HINT_PX      = 50;   // 5 ticks × 10 px
+      const HINT_MIN_H   = 40;
+      const HINT_MAX_H   = 100;
+      const HINT_TICK_PX = 10;
+
+      function shakeWheel(wheelEl, valEl, baseValue, minVal, maxVal) {
+        const current = wheelEl.style.transform || 'rotate(0deg)';
+        const match   = current.match(/rotate\(([^)]+)deg\)/);
+        const baseDeg = match ? parseFloat(match[1]) : 0;
+        // wheel rotates negative-forward: rotate(-rot), so +deltaDeg = fewer ticks shown
+        const ticksPerDeg = 100 / 360;
+        let lastNum = baseValue;
+        sineHint(offset => {
+          const deltaDeg = offset * HINT_DEG;
+          wheelEl.style.transform = `rotate(${baseDeg + deltaDeg}deg)`;
+          if (valEl) {
+            // negative rotation = value increases, positive = value decreases
+            const deltaVal = -Math.round(deltaDeg * ticksPerDeg);
+            const num = Math.max(minVal, Math.min(maxVal, baseValue + deltaVal));
+            if (num !== lastNum) {
+              lastNum = num;
+              valEl.textContent = num;
+              valEl.style.transform = 'translate(-50%,-50%) scale(1.1)';
+              valEl.style.opacity   = '0.85';
+              requestAnimationFrame(() => {
+                valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+                valEl.style.opacity   = '1';
+              });
+            }
+            if (offset === 0) { valEl.textContent = baseValue; lastNum = baseValue; }
+          }
+        });
+      }
+
+      function shakeStrip(stripEl, valEl, baseValue) {
+        const current = stripEl.style.transform || 'translateX(0px)';
+        const match   = current.match(/translateX\(([^)]+)px\)/);
+        const basePx  = match ? parseFloat(match[1]) : 0;
+        let lastNum = baseValue;
+        sineHint(offset => {
+          const deltaPx = offset * HINT_PX;
+          stripEl.style.transform = `translateX(${basePx + deltaPx}px)`;
+          if (valEl) {
+            // strip moves left (negative) = higher value
+            const deltaVal = -Math.round(deltaPx / HINT_TICK_PX);
+            const num = Math.max(HINT_MIN_H, Math.min(HINT_MAX_H, baseValue + deltaVal));
+            if (num !== lastNum) {
+              lastNum = num;
+              valEl.textContent = num;
+              valEl.style.transform = 'translate(-50%,-50%) scale(1.1)';
+              valEl.style.opacity   = '0.85';
+              requestAnimationFrame(() => {
+                valEl.style.transform = 'translate(-50%,-50%) scale(1)';
+                valEl.style.opacity   = '1';
+              });
+            }
+            if (offset === 0) { valEl.textContent = baseValue; lastNum = baseValue; }
+          }
+        });
+      }
+
+      function attachTapDetector(containerEl, onTap) {
+        let startX = 0, startY = 0, startTime = 0;
+        containerEl.addEventListener('touchstart', e => {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          startTime = performance.now();
+        }, { passive: true });
+        containerEl.addEventListener('touchend', e => {
+          const dx = Math.abs(e.changedTouches[0].clientX - startX);
+          const dy = Math.abs(e.changedTouches[0].clientY - startY);
+          const dt = performance.now() - startTime;
+          if (dx < 8 && dy < 8 && dt < 300) onTap();
+        }, { passive: true });
+        containerEl.addEventListener('click', () => onTap(), { passive: true });
+      }
+
+      // Pass valEl + live gTotal/gAttended/gTarget so numbers update during hint
+      attachTapDetector($('wheelContainer'),   () => shakeWheel($('wheel'),  $('val'),  gTotal,    1,      500));
+      attachTapDetector($('wheelContainer2'),  () => shakeWheel($('wheel2'), $('val2'), gAttended, 0,      gTotal));
+      attachTapDetector($('sliderContainer3'), () => shakeStrip($('tickStrip3'), $('val3'), gTarget));
+    })();
+
+    // ════════════════════════════════════════════
+    //  COACH MARK SYSTEM
+    //  Shows once on first visit (isFresh check).
+    //  4 steps: output card, wheel sliders,
+    //  target % slider, scrollable cells row.
+    //  Tap anywhere to advance / dismiss.
+    // ════════════════════════════════════════════
+    (function initCoachMarks() {
+      const LS_COACH = 'bunku_coach_done_v1';
+      // Only show on first visit (same condition as intro animation)
+      if (localStorage.getItem(LS_COACH)) return;
+
+      const overlay  = document.getElementById('coach-overlay');
+      const canvas   = document.getElementById('coach-canvas');
+      const tooltip  = document.getElementById('coach-tooltip');
+      const titleEl  = document.getElementById('coach-title');
+      const bodyEl   = document.getElementById('coach-body');
+      const arrowSVG = document.getElementById('coach-arrow');
+      const stepWrap = document.getElementById('coach-step-indicator');
+      const skipBtn  = document.getElementById('coach-skip');
+      const ctx      = canvas.getContext('2d');
+
+      const STEPS = [
+        {
+          targetId: 'vH-pct',
+          title: 'Your attendance',
+          body: 'The big % is your current attendance.',
+          tooltipSide: 'below',
+        },
+        {
+          targetId: 'vH-carousel',
+          title: 'Your status',
+          body: 'This tells you if you\'re safe to bunk — or how many classes you need to catch up.',
+          tooltipSide: 'below',
+        },
+        {
+          targetId: 'vH-scroll-wrap',
+          title: 'Swipe to see the future',
+          body: 'Scroll this row left to see how your attendance changes class by class.',
+          tooltipSide: 'below',
+        },
+        {
+          targetId: 'coach-wheels-group',
+          title: 'Spin to set your numbers',
+          body: 'Drag the wheel up or down to set total classes and classes attended.',
+          tooltipSide: 'above',
+        },
+        {
+          targetId: 'coach-card-horizontal',
+          title: 'Your attendance target',
+          body: 'KTU requires 75% minimum. Drag left or right to change your target.',
+          tooltipSide: 'above',
+        },
+      ];
+
+      let current = 0;
+
+      function sizeCanvas() {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+
+      function getRectOf(id) {
+        // Virtual group: compute union bounding box of both wheel cards
+        if (id === 'coach-wheels-group') {
+          const c1 = document.getElementById('coach-card-1');
+          const c2 = document.getElementById('coach-card-2');
+          if (!c1 || !c2) return null;
+          const r1 = c1.getBoundingClientRect();
+          const r2 = c2.getBoundingClientRect();
+          const x = Math.min(r1.left, r2.left);
+          const y = Math.min(r1.top, r2.top);
+          const right = Math.max(r1.right, r2.right);
+          const bottom = Math.max(r1.bottom, r2.bottom);
+          return { x, y, w: right - x, h: bottom - y };
+        }
+        const el = document.getElementById(id);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: r.left, y: r.top, w: r.width, h: r.height };
+      }
+
+      const PAD = 8; // cutout padding around the target element
+      const CUTOUT_RADIUS = 18; // matches card border-radius visual
+
+      function drawOverlay(rect) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = 'rgba(0,0,0,0.72)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (!rect) return;
+
+        const rx = rect.x - PAD, ry = rect.y - PAD;
+        const rw = rect.w + PAD * 2, rh = rect.h + PAD * 2;
+        const radius = CUTOUT_RADIUS;
+
+        // Punch out the cutout using composite
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.moveTo(rx + radius, ry);
+        ctx.lineTo(rx + rw - radius, ry);
+        ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + radius);
+        ctx.lineTo(rx + rw, ry + rh - radius);
+        ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - radius, ry + rh);
+        ctx.lineTo(rx + radius, ry + rh);
+        ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - radius);
+        ctx.lineTo(rx, ry + radius);
+        ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+
+        // Subtle white glow ring around cutout
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(rx + radius, ry);
+        ctx.lineTo(rx + rw - radius, ry);
+        ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + radius);
+        ctx.lineTo(rx + rw, ry + rh - radius);
+        ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - radius, ry + rh);
+        ctx.lineTo(rx + radius, ry + rh);
+        ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - radius);
+        ctx.lineTo(rx, ry + radius);
+        ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
+        ctx.closePath();
+        ctx.stroke();
+      }
+
+      function positionTooltip(rect, side) {
+        const TW = 220, MARGIN = 12;
+        const vw = window.innerWidth;
+
+        // Horizontal center — clamp within viewport
+        let left = rect ? rect.x + rect.w / 2 - TW / 2 : vw / 2 - TW / 2;
+        left = Math.max(MARGIN, Math.min(vw - TW - MARGIN, left));
+
+        let top;
+        if (side === 'above' && rect) {
+          top = rect.y - PAD - 8 - tooltip.offsetHeight;
+          if (top < 40) top = rect.y + rect.h + PAD + 8; // flip if too close to top
+        } else if (rect) {
+          top = rect.y + rect.h + PAD + 8;
+          if (top + tooltip.offsetHeight > window.innerHeight - 60) {
+            top = rect.y - PAD - 8 - tooltip.offsetHeight; // flip if too close to bottom
+          }
+        } else {
+          top = window.innerHeight / 2 - 40;
+        }
+
+        tooltip.style.left = left + 'px';
+        tooltip.style.top  = top  + 'px';
+      }
+
+      function positionArrow(rect, side) {
+        if (!rect) { arrowSVG.style.display = 'none'; return; }
+
+        // Arrow points from tooltip toward the cutout
+        const cx = rect.x + rect.w / 2;
+        let ax, ay, pointing;
+
+        if (side === 'above') {
+          // Tooltip is above the element → arrow points DOWN
+          ay = rect.y - PAD - 8;
+          ax = cx - 8;
+          pointing = 'down';
+        } else {
+          // Tooltip is below the element → arrow points UP
+          ay = rect.y + rect.h + PAD + 8;
+          ax = cx - 8;
+          pointing = 'up';
+        }
+
+        arrowSVG.style.left    = ax + 'px';
+        arrowSVG.style.top     = ay + 'px';
+        arrowSVG.style.display = 'block';
+        arrowSVG.style.width   = '16px';
+        arrowSVG.style.height  = '10px';
+
+        if (pointing === 'down') {
+          arrowSVG.innerHTML = '<polygon points="0,0 16,0 8,10" fill="white" opacity="0.9"/>';
+        } else {
+          arrowSVG.innerHTML = '<polygon points="0,10 16,10 8,0" fill="white" opacity="0.9"/>';
+        }
+      }
+
+      function buildDots() {
+        stepWrap.innerHTML = '';
+        STEPS.forEach((_, i) => {
+          const d = document.createElement('div');
+          d.className = 'coach-dot' + (i === current ? ' active' : '');
+          stepWrap.appendChild(d);
+        });
+      }
+
+      function showStep(idx) {
+        const step = STEPS[idx];
+        const rect = getRectOf(step.targetId);
+
+        titleEl.textContent = step.title;
+        bodyEl.textContent  = step.body;
+
+        tooltip.style.opacity = '0';
+        drawOverlay(rect);
+        positionTooltip(rect, step.tooltipSide);
+        positionArrow(rect, step.tooltipSide);
+        buildDots();
+
+        // Fade in tooltip after a tiny delay (lets layout settle)
+        requestAnimationFrame(() => {
+          tooltip.style.opacity = '1';
+        });
+
+        // Last step: change skip label
+        skipBtn.textContent = idx === STEPS.length - 1 ? 'got it ✓' : 'tap anywhere to continue';
+      }
+
+      function advance() {
+        current++;
+        if (current >= STEPS.length) {
+          dismiss();
+        } else {
+          showStep(current);
+        }
+      }
+
+      function dismiss() {
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.3s ease';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          overlay.style.transition = '';
+          overlay.style.opacity = '';
+        }, 320);
+        try { localStorage.setItem(LS_COACH, '1'); } catch(e) {}
+      }
+
+      // Tap anywhere on overlay to advance (but not on the cutout target itself)
+      overlay.addEventListener('click', advance);
+      // Skip button also advances (it's inside overlay so the above fires too — fine)
+      skipBtn.addEventListener('click', e => { e.stopPropagation(); dismiss(); });
+
+      // Wait for intro animation to mostly finish, then show coach marks
+      // isFresh intro = ~2.5s total; returning visit = ~1.4s. We start after both.
+      const coachDelay = _saved ? 1600 : 3200;
+
+      setTimeout(() => {
+        sizeCanvas();
+        overlay.style.display = 'block';
+        overlay.style.opacity = '0';
+        overlay.style.transition = 'opacity 0.35s ease';
+        requestAnimationFrame(() => {
+          overlay.style.opacity = '1';
+          showStep(0);
+        });
+      }, coachDelay);
+
+      window.addEventListener('resize', () => {
+        if (overlay.style.display === 'none') return;
+        sizeCanvas();
+        showStep(current);
+      }, { passive: true });
+    })();
 
     // ════════════════════════════════════════════
     //  INTRO ANIMATION — runs only on first visit
@@ -2507,7 +3035,10 @@
     })();
 
     // ── Canvas noise ──
+    // Skip on low-end devices (≤4 logical cores) to free GPU/CPU for slider rendering
     (function () {
+      const cores = navigator.hardwareConcurrency || 1;
+      if (cores <= 4) return; // low-end device — skip noise entirely
       const canvas = document.getElementById('noise-canvas');
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
