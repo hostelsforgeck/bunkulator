@@ -300,6 +300,9 @@
       border-radius: clamp(14px, 3.5vw, 22px);
       padding: var(--display-card-pad-v) var(--display-card-pad-h);
       flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+      transition: background 0.5s ease;
     }
 
     .vH-head {
@@ -641,12 +644,23 @@
       -webkit-user-select: none;
     }
 
-    .vH-action-icon {
-      font-size: var(--fs-label);
-      width: 22px;
-      text-align: center;
+    /* ── Selection dot (replaces icon) ── */
+    .vH-action-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
       flex-shrink: 0;
-      line-height: 1;
+      border: 1.5px solid rgba(255,255,255,0.28);
+      background: transparent;
+      transition: background 0.2s ease, border-color 0.2s ease;
+      margin-left: 1px;
+    }
+
+    /* Active slide: dot fills with accent colour passed via inline var */
+    .vH-slide-attend:not(.dimmed) .vH-action-dot,
+    .vH-slide-convince.active    .vH-action-dot {
+      background: var(--dot-color, rgba(255,255,255,0.6));
+      border-color: var(--dot-color, rgba(255,255,255,0.6));
     }
 
     .vH-action-text {
@@ -660,6 +674,14 @@
     .vH-action-text strong {
       color: #fff;
       font-weight: 700;
+    }
+
+    /* inline "or" that lives at the end of the attend row text */
+    .vH-action-or {
+      color: rgba(255,255,255,0.22);
+      font-size: 0.88em;
+      letter-spacing: 0.02em;
+      margin-left: 4px;
     }
 
     .vH-action-num {
@@ -1680,6 +1702,7 @@
     function updateCard(s) {
       lastS = s; lastCase = s.case;
       const c = col(s.case);
+      elCard.style.background = `radial-gradient(ellipse 65% 55% at 15% 110%, ${c.light}, transparent 55%), #000`;
       elPct.innerHTML = `${s.pct}<sup>%</sup>`;
       elPct.style.color = c.text;
       elBadge.style.cssText = `background:${c.light};color:${c.text}`;
@@ -1690,8 +1713,8 @@
       elSlide1.innerHTML = ''; elSlide1.className = 'vH-slide vH-slide-convince';
       if (s.case === 'impossible') {
         elSlide1.style.display = 'none';
-        elSlide0.innerHTML = `<div class="vH-action-row">
-      <div class="vH-action-icon" style="color:${c.text}">✦</div>
+        elSlide0.innerHTML = `<div class="vH-action-row" style="--dot-color:${c.text}">
+      <div class="vH-action-dot"></div>
       <div class="vH-action-text" style="color:rgba(255,255,255,0.4)">Can't reach 100% by attending — but convince your professor to mark <strong style="color:${c.text}">${s.total - s.attended} absent${s.total - s.attended !== 1 ? 's' : ''} as present</strong></div>
     </div>`;
         const impossibleSteps = [{ attended: s.attended, total: s.total, pct: s.pct, label: 'now', isCurrent: true, isTarget: false }];
@@ -1704,8 +1727,8 @@
         attachGapHandler(impossibleSteps, c);
       } else if (s.case === 'above') {
         elSlide1.style.display = 'none';
-        elSlide0.innerHTML = `<div class="vH-action-row">
-      <div class="vH-action-icon" style="color:${c.text}">${s.safeBunks === 0 ? '!' : '✓'}</div>
+        elSlide0.innerHTML = `<div class="vH-action-row" style="--dot-color:${c.text}">
+      <div class="vH-action-dot"></div>
       <div class="vH-action-text">${s.safeBunks === 0 ? `<strong>Right on the edge</strong> — don't skip any` : `You can skip <strong>${s.safeBunks} class${s.safeBunks !== 1 ? 'es' : ''}</strong> safely`}</div>
     </div>`;
         const aboveSteps = buildSteps(s);
@@ -1713,12 +1736,12 @@
         attachGapHandler(aboveSteps, c);
       } else {
         elSlide1.style.display = 'block';
-        elSlide0.innerHTML = `<div class="vH-action-row">
-      <div class="vH-action-icon" style="color:${c.text}">↑</div>
-      <div class="vH-action-text">Attend <strong>${s.attendNeeded} more class${s.attendNeeded !== 1 ? 'es' : ''}</strong> to reach ${s.target}% <span style="color:rgba(255,255,255,0.3);font-size:0.9em"> or</span></div>
+        elSlide0.innerHTML = `<div class="vH-action-row" style="--dot-color:${c.text}">
+      <div class="vH-action-dot"></div>
+      <div class="vH-action-text">Attend <strong>${s.attendNeeded} more class${s.attendNeeded !== 1 ? 'es' : ''}</strong> to reach ${s.target}%<span class="vH-action-or"> or</span></div>
     </div>`;
-        elSlide1.innerHTML = `<div class="vH-action-row">
-      <div class="vH-action-icon" style="color:${c.text}">✦</div>
+        elSlide1.innerHTML = `<div class="vH-action-row" style="--dot-color:${c.text}">
+      <div class="vH-action-dot"></div>
       <div class="vH-action-text">Convince professor to mark <strong>${s.convinceNeeded} absent</strong> as present</div>
     </div>`;
         elSlide0.onclick = () => { if (currentSlide !== 0) showAttendGraph(s, c); };
