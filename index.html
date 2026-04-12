@@ -295,6 +295,7 @@
     ══════════════════════════════════════ */
     .vH {
       width: var(--card-w);
+      min-height: clamp(170px, 33dvh, 250px);
       background: var(--card);
       border-radius: clamp(14px, 3.5vw, 22px);
       padding: var(--display-card-pad-v) var(--display-card-pad-h);
@@ -600,36 +601,44 @@
       padding-bottom: clamp(6px, 1dvh, 10px);
     }
 
-    /* carousel */
-    .vH-carousel {
-      position: relative;
-      overflow: hidden;
-      min-height: clamp(36px, 6dvh, 52px);
-    }
-
-    .vH-slides {
+    /* two-row actions */
+    .vH-actions {
       display: flex;
-      width: 200%;
-      transition: transform .32s cubic-bezier(.4, 0, .2, 1);
-    }
-
-    .vH-slides.single {
-      width: 100%;
+      flex-direction: column;
+      gap: clamp(4px, 0.8dvh, 8px);
     }
 
     .vH-slide {
-      width: 50%;
-      flex-shrink: 0;
+      width: 100%;
+      transition: opacity .2s ease;
     }
 
-    .vH-slides.single .vH-slide {
-      width: 100%;
+    .vH-slide-convince {
+      opacity: 0.32;
+      cursor: pointer;
     }
+
+    .vH-slide-convince.active {
+      opacity: 1;
+      cursor: default;
+    }
+
+    .vH-slide-attend {
+      cursor: default;
+    }
+
+    .vH-slide-attend.dimmed {
+      opacity: 0.32;
+      cursor: pointer;
+    }
+
 
     .vH-action-row {
       display: flex;
       align-items: center;
       gap: 8px;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .vH-action-icon {
@@ -662,81 +671,6 @@
       text-align: right;
     }
 
-    /* dots */
-    .vH-dots {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 5px;
-      margin-top: clamp(6px, 1dvh, 12px);
-    }
-
-    .vH-dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, .25);
-      border: none;
-      transition: all .3s cubic-bezier(.4, 0, .2, 1);
-      cursor: pointer;
-      flex-shrink: 0;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .vH-dot.active {
-      width: 16px;
-      height: 5px;
-      border-radius: 3px;
-      background: rgba(255, 255, 255, .25);
-    }
-
-    /* progress fill inside the active (line) indicator */
-    .vH-dot.active::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      height: 100%;
-      width: var(--dot-progress, 0%);
-      background: #fff;
-      border-radius: 3px;
-      transition: none;
-    }
-
-    .vH-swipe-hint {
-      position: absolute;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-      font-size: 13px;
-      color: rgba(255, 255, 255, .2);
-      pointer-events: none;
-      animation: hintFade 2s ease .8s forwards;
-      opacity: 0;
-    }
-
-    @keyframes hintFade {
-      0% {
-        opacity: 0;
-        transform: translateY(-50%) translateX(0);
-      }
-
-      20% {
-        opacity: 1;
-        transform: translateY(-50%) translateX(-4px);
-      }
-
-      70% {
-        opacity: 1;
-        transform: translateY(-50%) translateX(-4px);
-      }
-
-      100% {
-        opacity: 0;
-        transform: translateY(-50%) translateX(-4px);
-      }
-    }
 
     /* ══════════════════════════════════════
        RADIAL SLIDER CARDS
@@ -1197,7 +1131,7 @@
       pointer-events: none;
     }
 
-    
+
     /* ══════════════════════════════════════
        COACH MARK OVERLAY
     ══════════════════════════════════════ */
@@ -1226,7 +1160,7 @@
       font-size: 13px;
       line-height: 1.45;
       font-weight: 500;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
       pointer-events: none;
       transition: opacity 0.22s ease;
       z-index: 9001;
@@ -1268,7 +1202,7 @@
       width: 5px;
       height: 5px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.3);
+      background: rgba(255, 255, 255, 0.3);
       transition: all 0.25s ease;
     }
 
@@ -1285,7 +1219,7 @@
       transform: translateX(-50%);
       font-family: 'DM Mono', 'DM Mono Fallback', monospace;
       font-size: 11px;
-      color: rgba(255,255,255,0.35);
+      color: rgba(255, 255, 255, 0.35);
       letter-spacing: 0.06em;
       pointer-events: auto;
       cursor: pointer;
@@ -1293,7 +1227,6 @@
       z-index: 9001;
       white-space: nowrap;
     }
-
   </style>
 </head>
 
@@ -1364,16 +1297,9 @@
         </div>
       </div>
       <div class="vH-divider"></div>
-      <div class="vH-carousel" id="vH-carousel">
-        <div class="vH-slides" id="vH-slides">
-          <div class="vH-slide" id="vH-slide-0"></div>
-          <div class="vH-slide" id="vH-slide-1"></div>
-        </div>
-        <div class="vH-swipe-hint" id="vH-swipe-hint">‹</div>
-      </div>
-      <div class="vH-dots" id="vH-dots">
-        <div class="vH-dot active" id="dot-0" data-idx="0"></div>
-        <div class="vH-dot" id="dot-1" data-idx="1"></div>
+      <div class="vH-actions" id="vH-actions">
+        <div class="vH-slide vH-slide-attend" id="vH-slide-0"></div>
+        <div class="vH-slide vH-slide-convince" id="vH-slide-1"></div>
       </div>
     </div><!-- end .vH -->
   </div><!-- end .vH-wrapper -->
@@ -1477,14 +1403,13 @@
     // ════════════════════════════════════════════
     const $ = id => document.getElementById(id);
     const elPct = $('vH-pct'), elBadge = $('vH-badge'), elFrac = $('vH-frac');
-    const elCells = $('vH-cells'), elSlides = $('vH-slides'), elDots = $('vH-dots');
-    const elHint = $('vH-swipe-hint'), elSummary = $('vH-summary');
+    const elCells = $('vH-cells');
+    const elSummary = $('vH-summary');
     const elSlide0 = $('vH-slide-0'), elSlide1 = $('vH-slide-1');
-    const elDot0 = $('dot-0'), elDot1 = $('dot-1');
     const elOuter = $('vH-scroll-outer'), elWrap = $('vH-scroll-wrap');
-    const elCard = $('vH'); // used for touch swipe
+    const elCard = $('vH');
 
-    let currentSlide = 0, totalSlides = 1, lastS = null, lastCase = 'above';
+    let currentSlide = 0, lastS = null, lastCase = 'above';
 
     function calc(total, attended, target) {
       const pct = total ? Math.round(attended / total * 100) : 0;
@@ -1720,15 +1645,35 @@
       }, 80);
     }
 
-    function goToSlide(idx, s, c) {
-      currentSlide = idx;
-      const steps = idx === 0 ? buildSteps(s) : buildConvinceSteps(s);
+    function showAttendGraph(s, c) {
+      currentSlide = 0;
+      elSlide0.classList.remove('dimmed');
+      elSlide1.classList.remove('active');
+      const steps = buildSteps(s);
       elCells.innerHTML = renderCells(steps, c);
       attachGapHandler(steps, c);
-      updateFrac(s, c, idx);
-      elSlides.style.transform = idx ? 'translateX(-50%)' : 'translateX(0%)';
-      elDot0.classList.toggle('active', idx === 0);
-      elDot1.classList.toggle('active', idx === 1);
+      updateFrac(s, c, 0);
+      elWrap.scrollLeft = 0;
+      elOuter.classList.remove('scrolled', 'at-end');
+      requestAnimationFrame(() => {
+        if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end');
+      });
+      scrollToTarget();
+    }
+
+    function showConvinceGraph(s, c) {
+      currentSlide = 1;
+      elSlide0.classList.add('dimmed');
+      elSlide1.classList.add('active');
+      const steps = buildConvinceSteps(s);
+      elCells.innerHTML = renderCells(steps, c);
+      attachGapHandler(steps, c);
+      updateFrac(s, c, 1);
+      elWrap.scrollLeft = 0;
+      elOuter.classList.remove('scrolled', 'at-end');
+      requestAnimationFrame(() => {
+        if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end');
+      });
       scrollToTarget();
     }
 
@@ -1741,16 +1686,13 @@
       elBadge.textContent = s.case === 'above' ? `Above ${s.target}%` : s.case === 'impossible' ? 'Impossible' : `Below ${s.target}%`;
       elSummary.textContent = `${s.attended} of ${s.total} attended · target ${s.target}%`;
       currentSlide = 0;
-      elSlides.style.transform = 'translateX(0%)';
-      elSlide1.innerHTML = ''; elSlide1.className = 'vH-slide';
-      elDot0.classList.add('active'); elDot1.classList.remove('active');
+      elSlide0.classList.remove('dimmed');
+      elSlide1.innerHTML = ''; elSlide1.className = 'vH-slide vH-slide-convince';
       if (s.case === 'impossible') {
-        totalSlides = 1;
-        elSlides.classList.add('single'); elDot1.style.display = 'none'; elHint.style.display = 'none';
-        const convinceCount = s.total - s.attended;
+        elSlide1.style.display = 'none';
         elSlide0.innerHTML = `<div class="vH-action-row">
       <div class="vH-action-icon" style="color:${c.text}">✦</div>
-      <div class="vH-action-text" style="color:rgba(255,255,255,0.4)">Can't reach 100% by attending — but convince your professor to mark <strong style="color:${c.text}">${convinceCount} absent${convinceCount !== 1 ? 's' : ''} as present</strong></div>
+      <div class="vH-action-text" style="color:rgba(255,255,255,0.4)">Can't reach 100% by attending — but convince your professor to mark <strong style="color:${c.text}">${s.total - s.attended} absent${s.total - s.attended !== 1 ? 's' : ''} as present</strong></div>
     </div>`;
         const impossibleSteps = [{ attended: s.attended, total: s.total, pct: s.pct, label: 'now', isCurrent: true, isTarget: false }];
         for (let i = 1; i <= convinceCount; i++) {
@@ -1761,8 +1703,7 @@
         elCells.innerHTML = renderCells(impossibleSteps, c);
         attachGapHandler(impossibleSteps, c);
       } else if (s.case === 'above') {
-        totalSlides = 1;
-        elSlides.classList.add('single'); elDot1.style.display = 'none'; elHint.style.display = 'none';
+        elSlide1.style.display = 'none';
         elSlide0.innerHTML = `<div class="vH-action-row">
       <div class="vH-action-icon" style="color:${c.text}">${s.safeBunks === 0 ? '!' : '✓'}</div>
       <div class="vH-action-text">${s.safeBunks === 0 ? `<strong>Right on the edge</strong> — don't skip any` : `You can skip <strong>${s.safeBunks} class${s.safeBunks !== 1 ? 'es' : ''}</strong> safely`}</div>
@@ -1771,16 +1712,17 @@
         elCells.innerHTML = renderCells(aboveSteps, c);
         attachGapHandler(aboveSteps, c);
       } else {
-        totalSlides = 2;
-        elSlides.classList.remove('single'); elDot1.style.display = ''; elHint.style.display = '';
+        elSlide1.style.display = 'block';
         elSlide0.innerHTML = `<div class="vH-action-row">
       <div class="vH-action-icon" style="color:${c.text}">↑</div>
-      <div class="vH-action-text">Attend <strong>${s.attendNeeded} more class${s.attendNeeded !== 1 ? 'es' : ''}</strong> to reach ${s.target}%</div>
+      <div class="vH-action-text">Attend <strong>${s.attendNeeded} more class${s.attendNeeded !== 1 ? 'es' : ''}</strong> to reach ${s.target}% <span style="color:rgba(255,255,255,0.3);font-size:0.9em"> or</span></div>
     </div>`;
         elSlide1.innerHTML = `<div class="vH-action-row">
       <div class="vH-action-icon" style="color:${c.text}">✦</div>
-      <div class="vH-action-text">Or convince professor to mark <strong>${s.convinceNeeded} absent</strong> as present</div>
+      <div class="vH-action-text">Convince professor to mark <strong>${s.convinceNeeded} absent</strong> as present</div>
     </div>`;
+        elSlide0.onclick = () => { if (currentSlide !== 0) showAttendGraph(s, c); };
+        elSlide1.onclick = () => { if (currentSlide !== 1) showConvinceGraph(s, c); };
         const belowSteps = buildSteps(s);
         elCells.innerHTML = renderCells(belowSteps, c);
         attachGapHandler(belowSteps, c);
@@ -1792,7 +1734,6 @@
         if (elWrap.scrollWidth <= elWrap.clientWidth) elOuter.classList.add('at-end');
       });
       scrollToTarget();
-      resetAutoScroll();
     }
 
     // Master update — called whenever any slider changes
@@ -1815,129 +1756,6 @@
       elOuter.classList.toggle('scrolled', scrollLeft >= 4);
       elOuter.classList.toggle('at-end', scrollLeft + clientWidth >= scrollWidth - 4);
     }, { passive: true });
-
-    // Dots nav
-    elDots.addEventListener('click', e => {
-      const dot = e.target.closest('.vH-dot');
-      if (dot) goToSlide(+dot.dataset.idx, lastS, col(lastCase));
-    });
-
-    // Touch swipe
-    let touchStartX = 0, touchStartY = 0, swipeState = 'idle', swipeTarget = null;
-    elCard.addEventListener('touchstart', e => {
-      touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
-      swipeState = 'idle'; swipeTarget = e.target;
-    }, { passive: true });
-    elCard.addEventListener('touchmove', e => {
-      if (swipeState !== 'idle') return;
-      const dx = e.touches[0].clientX - touchStartX;
-      const adx = Math.abs(dx), ady = Math.abs(e.touches[0].clientY - touchStartY);
-      if (adx < 6 && ady < 6) return;
-      if (elWrap.contains(swipeTarget)) {
-        const { scrollLeft, scrollWidth, clientWidth } = elWrap;
-        const atBoundary = (dx < 0 && scrollLeft + clientWidth >= scrollWidth - 2) || (dx > 0 && scrollLeft <= 2);
-        swipeState = (atBoundary && adx > ady) ? 'swiping' : 'scrolling';
-      } else {
-        swipeState = adx > ady ? 'swiping' : 'scrolling';
-      }
-    }, { passive: true });
-    elCard.addEventListener('touchend', e => {
-      if (swipeState !== 'swiping') { swipeState = 'idle'; return; }
-      const dx = e.changedTouches[0].clientX - touchStartX;
-      swipeState = 'idle';
-      if (Math.abs(dx) < 20) return;
-      if (dx < 0 && currentSlide < totalSlides - 1) goToSlide(currentSlide + 1, lastS, col(lastCase));
-      if (dx > 0 && currentSlide > 0) goToSlide(currentSlide - 1, lastS, col(lastCase));
-    });
-
-    // ════════════════════════════════════════════
-    //  AUTO-SCROLL CAROUSEL WITH PROGRESS BAR
-    // ════════════════════════════════════════════
-    const CAROUSEL_INTERVAL = 6000; // ms
-    let autoScrollRaf = null;
-    let autoScrollStart = null;
-    let autoScrollPaused = false;
-
-    function getActiveDot() {
-      return currentSlide === 0 ? elDot0 : elDot1;
-    }
-
-    function setDotProgress(dot, fraction) {
-      dot.style.setProperty('--dot-progress', (fraction * 100).toFixed(2) + '%');
-    }
-
-    function resetDotProgress(dot) {
-      dot.style.setProperty('--dot-progress', '0%');
-    }
-
-    function startAutoScroll() {
-      if (autoScrollRaf) cancelAnimationFrame(autoScrollRaf);
-      autoScrollStart = null;
-
-      function tick(now) {
-        if (totalSlides < 2) {
-          // Single-slide mode — nothing to do
-          autoScrollRaf = null;
-          return;
-        }
-        if (autoScrollPaused) {
-          autoScrollStart = now; // reset timer while paused
-          autoScrollRaf = requestAnimationFrame(tick);
-          return;
-        }
-        if (!autoScrollStart) autoScrollStart = now;
-        const elapsed = now - autoScrollStart;
-        const fraction = Math.min(elapsed / CAROUSEL_INTERVAL, 1);
-
-        // Drive the active (line) indicator progress
-        setDotProgress(getActiveDot(), fraction);
-
-        if (fraction >= 1) {
-          // Advance slide
-          const nextSlide = (currentSlide + 1) % totalSlides;
-          resetDotProgress(getActiveDot());
-          goToSlide(nextSlide, lastS, col(lastCase));
-          // reset timer for next slide
-          autoScrollStart = now;
-          autoScrollRaf = requestAnimationFrame(tick);
-          return;
-        }
-
-        autoScrollRaf = requestAnimationFrame(tick);
-      }
-
-      autoScrollRaf = requestAnimationFrame(tick);
-    }
-
-    function resetAutoScroll() {
-      resetDotProgress(elDot0);
-      resetDotProgress(elDot1);
-      startAutoScroll();
-    }
-
-    // Pause on user interaction, resume after 1.5s idle
-    function pauseAutoScroll() {
-      autoScrollPaused = true;
-    }
-    let _autoScrollResumeTimer = null;
-    function scheduleResume() {
-      pauseAutoScroll();
-      clearTimeout(_autoScrollResumeTimer);
-      _autoScrollResumeTimer = setTimeout(() => {
-        autoScrollPaused = false;
-        autoScrollStart = null;
-      }, 1500);
-    }
-
-    // Hook into dot clicks
-    elDots.addEventListener('click', () => scheduleResume());
-
-    // Hook into touch swipes
-    elCard.addEventListener('touchstart', () => pauseAutoScroll(), { passive: true });
-    elCard.addEventListener('touchend', () => scheduleResume(), { passive: true });
-
-    // Start the loop
-    startAutoScroll();
 
     // ════════════════════════════════════════════
     //  SLIDER LOGIC
@@ -2531,7 +2349,7 @@
           const wave = Math.sin(raw * Math.PI * 2);
           // Apply envelope: fade amplitude in quickly, taper out gently
           // This prevents a hard start and ensures clean settle
-          const env  = Math.sin(raw * Math.PI);             // 0 → 1 → 0 bell curve
+          const env = Math.sin(raw * Math.PI);             // 0 → 1 → 0 bell curve
           applyFn(wave * env);
           requestAnimationFrame(frame);
         }
@@ -2539,15 +2357,15 @@
       }
 
       // SNAP_ANGLE = 3.6 deg/tick; amplitude = 5 ticks
-      const HINT_DEG     = 18;   // 5 ticks × 3.6 deg
-      const HINT_PX      = 50;   // 5 ticks × 10 px
-      const HINT_MIN_H   = 40;
-      const HINT_MAX_H   = 100;
+      const HINT_DEG = 18;   // 5 ticks × 3.6 deg
+      const HINT_PX = 50;   // 5 ticks × 10 px
+      const HINT_MIN_H = 40;
+      const HINT_MAX_H = 100;
       const HINT_TICK_PX = 10;
 
       function shakeWheel(wheelEl, valEl, baseValue, minVal, maxVal) {
         const current = wheelEl.style.transform || 'rotate(0deg)';
-        const match   = current.match(/rotate\(([^)]+)deg\)/);
+        const match = current.match(/rotate\(([^)]+)deg\)/);
         const baseDeg = match ? parseFloat(match[1]) : 0;
         // wheel rotates negative-forward: rotate(-rot), so +deltaDeg = fewer ticks shown
         const ticksPerDeg = 100 / 360;
@@ -2563,10 +2381,10 @@
               lastNum = num;
               valEl.textContent = num;
               valEl.style.transform = 'translate(-50%,-50%) scale(1.1)';
-              valEl.style.opacity   = '0.85';
+              valEl.style.opacity = '0.85';
               requestAnimationFrame(() => {
                 valEl.style.transform = 'translate(-50%,-50%) scale(1)';
-                valEl.style.opacity   = '1';
+                valEl.style.opacity = '1';
               });
             }
             if (offset === 0) { valEl.textContent = baseValue; lastNum = baseValue; }
@@ -2576,8 +2394,8 @@
 
       function shakeStrip(stripEl, valEl, baseValue) {
         const current = stripEl.style.transform || 'translateX(0px)';
-        const match   = current.match(/translateX\(([^)]+)px\)/);
-        const basePx  = match ? parseFloat(match[1]) : 0;
+        const match = current.match(/translateX\(([^)]+)px\)/);
+        const basePx = match ? parseFloat(match[1]) : 0;
         let lastNum = baseValue;
         sineHint(offset => {
           const deltaPx = offset * HINT_PX;
@@ -2590,10 +2408,10 @@
               lastNum = num;
               valEl.textContent = num;
               valEl.style.transform = 'translate(-50%,-50%) scale(1.1)';
-              valEl.style.opacity   = '0.85';
+              valEl.style.opacity = '0.85';
               requestAnimationFrame(() => {
                 valEl.style.transform = 'translate(-50%,-50%) scale(1)';
-                valEl.style.opacity   = '1';
+                valEl.style.opacity = '1';
               });
             }
             if (offset === 0) { valEl.textContent = baseValue; lastNum = baseValue; }
@@ -2618,8 +2436,8 @@
       }
 
       // Pass valEl + live gTotal/gAttended/gTarget so numbers update during hint
-      attachTapDetector($('wheelContainer'),   () => shakeWheel($('wheel'),  $('val'),  gTotal,    1,      500));
-      attachTapDetector($('wheelContainer2'),  () => shakeWheel($('wheel2'), $('val2'), gAttended, 0,      gTotal));
+      attachTapDetector($('wheelContainer'), () => shakeWheel($('wheel'), $('val'), gTotal, 1, 500));
+      attachTapDetector($('wheelContainer2'), () => shakeWheel($('wheel2'), $('val2'), gAttended, 0, gTotal));
       attachTapDetector($('sliderContainer3'), () => shakeStrip($('tickStrip3'), $('val3'), gTarget));
     })();
 
@@ -2635,15 +2453,15 @@
       // Only show on first visit (same condition as intro animation)
       if (localStorage.getItem(LS_COACH)) return;
 
-      const overlay  = document.getElementById('coach-overlay');
-      const canvas   = document.getElementById('coach-canvas');
-      const tooltip  = document.getElementById('coach-tooltip');
-      const titleEl  = document.getElementById('coach-title');
-      const bodyEl   = document.getElementById('coach-body');
+      const overlay = document.getElementById('coach-overlay');
+      const canvas = document.getElementById('coach-canvas');
+      const tooltip = document.getElementById('coach-tooltip');
+      const titleEl = document.getElementById('coach-title');
+      const bodyEl = document.getElementById('coach-body');
       const arrowSVG = document.getElementById('coach-arrow');
       const stepWrap = document.getElementById('coach-step-indicator');
-      const skipBtn  = document.getElementById('coach-skip');
-      const ctx      = canvas.getContext('2d');
+      const skipBtn = document.getElementById('coach-skip');
+      const ctx = canvas.getContext('2d');
 
       const STEPS = [
         {
@@ -2681,7 +2499,7 @@
       let current = 0;
 
       function sizeCanvas() {
-        canvas.width  = window.innerWidth;
+        canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
       }
 
@@ -2774,7 +2592,7 @@
         }
 
         tooltip.style.left = left + 'px';
-        tooltip.style.top  = top  + 'px';
+        tooltip.style.top = top + 'px';
       }
 
       function positionArrow(rect, side) {
@@ -2796,11 +2614,11 @@
           pointing = 'up';
         }
 
-        arrowSVG.style.left    = ax + 'px';
-        arrowSVG.style.top     = ay + 'px';
+        arrowSVG.style.left = ax + 'px';
+        arrowSVG.style.top = ay + 'px';
         arrowSVG.style.display = 'block';
-        arrowSVG.style.width   = '16px';
-        arrowSVG.style.height  = '10px';
+        arrowSVG.style.width = '16px';
+        arrowSVG.style.height = '10px';
 
         if (pointing === 'down') {
           arrowSVG.innerHTML = '<polygon points="0,0 16,0 8,10" fill="white" opacity="0.9"/>';
@@ -2823,7 +2641,7 @@
         const rect = getRectOf(step.targetId);
 
         titleEl.textContent = step.title;
-        bodyEl.textContent  = step.body;
+        bodyEl.textContent = step.body;
 
         tooltip.style.opacity = '0';
         drawOverlay(rect);
@@ -2857,7 +2675,7 @@
           overlay.style.transition = '';
           overlay.style.opacity = '';
         }, 320);
-        try { localStorage.setItem(LS_COACH, '1'); } catch(e) {}
+        try { localStorage.setItem(LS_COACH, '1'); } catch (e) { }
       }
 
       // Tap anywhere on overlay to advance (but not on the cutout target itself)
@@ -3073,7 +2891,7 @@
         'planned bunks only',
         'skip smarter, not harder',
         'do the math. then do the bunk.',
-        'attendance anxiety? never heard of her',
+        'attendance anxiety? never heard of it',
         'the calculator your professor fears',
         'because guessing is for amateurs',
         'your attendance, your rules',
