@@ -5,7 +5,7 @@
 (function () {
   "use strict";
 
-  // ── ANIMATION CONFIGS ────────────────────────────────────
+// ── ANIMATION CONFIGS ────────────────────────────────────
   const ANIM_1 = {
     label: "wave",
     fps: 15,
@@ -175,10 +175,9 @@
 
   const IDLE_MIN_MS = 3500;
   const IDLE_MAX_MS = 7000;
-  const GREET_DELAY = 1500; // first play after load
-  const HOVER_DELAY = 350; // ms before reacting to hover
-  const WAVE_WEIGHT = 0.55; // probability of waving vs carrot
-  const MAX_HISTORY = 2; // prevent same animation repeating too often
+  const GREET_DELAY = 1500;
+  const WAVE_WEIGHT = 0.55;
+  const MAX_HISTORY = 2;
   // ────────────────────────────────────────────────────────
 
   const canvas = document.getElementById("bunku-mascot");
@@ -190,24 +189,20 @@
   const ctx = canvas.getContext("2d");
   const ANIMS = [ANIM_1, ANIM_2];
 
-  // Loaded image banks — images[animIdx][frameIdx]
   const imageBank = ANIMS.map((a) => new Array(a.frames.length));
   let totalLoaded = 0;
   const totalFrames = ANIMS.reduce((s, a) => s + a.frames.length, 0);
 
-  // Playback state
   let playing = false;
-  let activeAnim = null; // current ANIM object
-  let activeIdx = 0; // index into ANIMS
+  let activeAnim = null;
+  let activeIdx = 0;
   let frame = 0;
   let interval = 0;
   let lastTime = null;
   let rafHandle = null;
   let idleTimer = null;
-  let hoverTimer = null;
   const history = [];
 
-  // ── Preload all frames from both animations ──
   function preload() {
     ANIMS.forEach((anim, ai) => {
       anim.frames.forEach((src, fi) => {
@@ -226,7 +221,6 @@
     schedulePlay(GREET_DELAY);
   }
 
-  // ── Draw one frame of the given animation ──
   function drawFrame(animIdx, frameNum) {
     const img = imageBank[animIdx][frameNum];
     if (!img || !img.complete) return;
@@ -241,13 +235,11 @@
     let drawWidth, drawHeight, offsetX, offsetY;
 
     if (imgAspect > targetAspect) {
-      // Image is wider — fit to height
       drawHeight = targetHeight;
       drawWidth = drawHeight * imgAspect;
       offsetX = (canvas.width - drawWidth) / 2;
       offsetY = (canvas.height - drawHeight) / 2;
     } else {
-      // Image is taller — fit to width
       drawWidth = targetWidth;
       drawHeight = drawWidth / imgAspect;
       offsetX = (canvas.width - drawWidth) / 2;
@@ -257,7 +249,6 @@
     ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
   }
 
-  // ── Smart random pick — avoids same anim repeating MAX_HISTORY times ──
   function pickAnim() {
     if (
       history.length >= MAX_HISTORY &&
@@ -270,7 +261,6 @@
     return Math.random() < WAVE_WEIGHT ? 0 : 1;
   }
 
-  // ── Human-like idle delay with occasional quick follow-ups ──
   function randomIdle() {
     const base = IDLE_MIN_MS + Math.random() * (IDLE_MAX_MS - IDLE_MIN_MS);
     return Math.random() < 0.18 ? base * 0.35 : base;
@@ -280,11 +270,29 @@
     clearTimeout(idleTimer);
     idleTimer = setTimeout(
       playOnce,
-      delay !== undefined ? delay : randomIdle(),
+      delay !== undefined ? delay : randomIdle()
     );
   }
 
-  // ── Play a single animation pass then return to idle ──
+  // ── Fully halt all animation and timer activity ──────────
+  function stopAll() {
+    cancelAnimationFrame(rafHandle);
+    clearTimeout(idleTimer);
+    rafHandle = null;
+    idleTimer = null;
+    playing = false;
+    lastTime = null;
+  }
+
+  // ── Resume from a guaranteed-clean state ─────────────────
+  function resume(delay) {
+    stopAll();
+    if (totalLoaded === totalFrames) {
+      drawFrame(0, 0);
+      schedulePlay(delay);
+    }
+  }
+
   function playOnce(forceAnimIdx) {
     if (playing) return;
 
@@ -313,7 +321,7 @@
       if (frame >= activeAnim.frames.length) {
         playing = false;
         cancelAnimationFrame(rafHandle);
-        drawFrame(0, 0); // return to neutral pose (frame 0 of wave anim)
+        drawFrame(0, 0);
         schedulePlay();
         return;
       }
@@ -321,41 +329,23 @@
     rafHandle = requestAnimationFrame(tick);
   }
 
-  // ── Interactions ─────────────────────────────────────────
-
-  // Click / tap → wave immediately
-  canvas.style.cursor = "pointer";
-  canvas.addEventListener("click", () => {
-    if (playing) return;
-    clearTimeout(idleTimer);
-    clearTimeout(hoverTimer);
-    playOnce(0);
-  });
-
-  // Hover → carrot animation after a natural pause
-  canvas.addEventListener("mouseenter", () => {
-    if (playing) return;
-    clearTimeout(hoverTimer);
-    hoverTimer = setTimeout(() => {
-      if (!playing) {
-        clearTimeout(idleTimer);
-        playOnce(1);
-      }
-    }, HOVER_DELAY);
-  });
-
-  canvas.addEventListener("mouseleave", () => {
-    clearTimeout(hoverTimer);
-  });
-
-  // ── Pause when tab is hidden (saves CPU / battery) ──
+  // ── Tab visibility (switch tabs, minimize) ───────────────
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      cancelAnimationFrame(rafHandle);
-      clearTimeout(idleTimer);
-      clearTimeout(hoverTimer);
-    } else if (!playing) {
-      schedulePlay(1000);
+      stopAll();
+    } else {
+      resume(1000);
+    }
+  });
+
+  // ── Page lifecycle — handles bfcache (close & reopen) ────
+  window.addEventListener("pagehide", () => {
+    stopAll();
+  });
+
+  window.addEventListener("pageshow", (e) => {
+    if (e.persisted) {
+      resume(500);
     }
   });
 
