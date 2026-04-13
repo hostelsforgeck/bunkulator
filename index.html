@@ -15,10 +15,6 @@
   <meta name="robots" content="index, follow" />
   <meta name="author" content="malik-l0l" />
 
-  <!-- ══ FAVICON ══ -->
-  <link rel="icon" type="image/png" href="/og-image.png" />
-  <link rel="apple-touch-icon" href="/og-image.png" />
-
   <!-- ══ FONT PRECONNECT (eliminates render-blocking @import) ══ -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -30,18 +26,26 @@
       href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500&display=swap" />
   </noscript>
 
-  <!-- ══ OPEN GRAPH (Facebook / WhatsApp / LinkedIn) ══ -->
+  <!-- ══ FAVICON ══ -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/og-image.png" />
+  <link rel="apple-touch-icon" href="/og-image.png" />
+
+  <!-- ══ OPEN GRAPH ══ -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://bunkulator.vercel.app/" />
   <meta property="og:title" content="Bunkulator – KTU Attendance Calculator & Bunk Calculator" />
   <meta property="og:description"
     content="Know exactly how many classes you can skip and still stay safe. The go-to KTU attendance calculator for students who plan smart." />
   <meta property="og:image" content="https://bunkulator.vercel.app/og-image.png" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+  <meta property="og:image:type" content="image/png" />
   <meta property="og:site_name" content="Bunkulator" />
   <meta property="og:locale" content="en_IN" />
 
   <!-- ══ TWITTER CARD ══ -->
-  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:card" content="summary" />
   <meta name="twitter:url" content="https://bunkulator.vercel.app/" />
   <meta name="twitter:title" content="Bunkulator – KTU Attendance Calculator" />
   <meta name="twitter:description"
@@ -650,7 +654,7 @@
       height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
-      border: 1.5px solid rgba(255,255,255,0.28);
+      border: 1.5px solid rgba(255, 255, 255, 0.28);
       background: transparent;
       transition: background 0.2s ease, border-color 0.2s ease;
       margin-left: 1px;
@@ -658,9 +662,9 @@
 
     /* Active slide: dot fills with accent colour passed via inline var */
     .vH-slide-attend:not(.dimmed) .vH-action-dot,
-    .vH-slide-convince.active    .vH-action-dot {
-      background: var(--dot-color, rgba(255,255,255,0.6));
-      border-color: var(--dot-color, rgba(255,255,255,0.6));
+    .vH-slide-convince.active .vH-action-dot {
+      background: var(--dot-color, rgba(255, 255, 255, 0.6));
+      border-color: var(--dot-color, rgba(255, 255, 255, 0.6));
     }
 
     .vH-action-text {
@@ -678,7 +682,7 @@
 
     /* inline "or" that lives at the end of the attend row text */
     .vH-action-or {
-      color: rgba(255,255,255,0.22);
+      color: rgba(255, 255, 255, 0.22);
       font-size: 0.88em;
       letter-spacing: 0.02em;
       margin-left: 4px;
