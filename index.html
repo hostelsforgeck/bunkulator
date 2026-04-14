@@ -1330,11 +1330,11 @@
     </div><!-- end .vH -->
   </div><!-- end .vH-wrapper -->
 
-  <!-- ── Slider 1: Total Classes ── -->
+  <!-- ── Slider 1: Conducted Classes ── -->
   <div class="card" id="coach-card-1">
     <div class="indicator"></div>
     <div class="value-display">
-      <span class="label label-before">Total</span>
+      <span class="label label-before">Conducted</span>
       <span id="val" class="val-num">12</span>
       <span class="label label-after">classes</span>
     </div>
@@ -1363,7 +1363,7 @@
     <div class="value-display-horizontal">
       <span class="label-h label-h-before">Target</span>
       <span id="val3" class="val-num-h">75</span>
-      <span class="label-h label-h-pct" style="left: 1px;">%</span>
+      <span class="label-h label-h-pct">%</span>
       <span class="label-h label-h-after">attendance</span>
     </div>
     <div class="slider-container" id="sliderContainer3">
@@ -2105,7 +2105,10 @@
       window.addEventListener('resize', updateCachedValWidth, { passive: true });
 
       function repositionLabels() {
-        // Use cached width — no layout read inside animation loop
+        if (gTarget === 100) {
+          // Cache is stale from 2-digit value — force a fresh measure
+          _cachedValW = valEl.offsetWidth;
+        }
         if (_cachedValW > 0) {
           pctEl.style.left = `calc(50% + ${_cachedValW / 2}px)`;
         }
@@ -2518,8 +2521,8 @@
         },
         {
           targetId: 'coach-wheels-group',
-          title: 'Spin to set your numbers',
-          body: 'Drag left or right to set total classes and classes attended.',
+          title: 'Set your numbers',
+          body: 'Spin to set classes conducted and attended. If your college app shows 8/12 — set conducted to 12, attended to 8.',
           tooltipSide: 'above',
         },
         {
