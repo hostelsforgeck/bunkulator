@@ -1,6 +1,7 @@
 {
   "name": "bunkulator",
   "version": "1.0.0",
+  "type": "commonjs",
   "scripts": {
     "build": "node build.js"
   },
