@@ -18,33 +18,33 @@ async function build() {
   const mascotJs = fs.readFileSync('./bunku-mascot.js', 'utf8');
   const obfuscatedMascot = JavaScriptObfuscator.obfuscate(mascotJs, {
     compact: true,
-    controlFlowFlattening: true,
-    controlFlowFlatteningThreshold: 0.75,
-    deadCodeInjection: true,
-    deadCodeInjectionThreshold: 0.4,
-    debugProtection: false, // Set to true for extra protection (can cause issues)
+    controlFlowFlattening: false, // Disabled for performance
+    controlFlowFlatteningThreshold: 0,
+    deadCodeInjection: false, // Disabled for performance
+    deadCodeInjectionThreshold: 0,
+    debugProtection: false,
     debugProtectionInterval: 0,
     disableConsoleOutput: false,
     identifierNamesGenerator: 'hexadecimal',
     log: false,
-    numbersToExpressions: true,
+    numbersToExpressions: false, // Disabled for performance
     renameGlobals: false,
-    selfDefending: true, // Protects against code beautification
+    selfDefending: false, // Disabled for performance
     simplify: true,
-    splitStrings: true,
+    splitStrings: false, // Disabled for performance
     splitStringsChunkLength: 10,
     stringArray: true,
-    stringArrayCallsTransform: true,
-    stringArrayEncoding: ['base64'],
+    stringArrayCallsTransform: false, // Disabled for performance
+    stringArrayEncoding: [], // Disabled for performance
     stringArrayIndexShift: true,
     stringArrayRotate: true,
     stringArrayShuffle: true,
-    stringArrayWrappersCount: 2,
-    stringArrayWrappersChainedCalls: true,
-    stringArrayWrappersParametersMaxCount: 4,
-    stringArrayWrappersType: 'function',
-    stringArrayThreshold: 0.75,
-    transformObjectKeys: true,
+    stringArrayWrappersCount: 1,
+    stringArrayWrappersChainedCalls: false,
+    stringArrayWrappersParametersMaxCount: 2,
+    stringArrayWrappersType: 'variable',
+    stringArrayThreshold: 0.5, // Reduced for performance
+    transformObjectKeys: false, // Disabled for performance
     unicodeEscapeSequence: false
   });
 
@@ -67,20 +67,20 @@ async function build() {
     // Obfuscate inline JavaScript
     const obfuscatedInline = JavaScriptObfuscator.obfuscate(inlineJs, {
       compact: true,
-      controlFlowFlattening: true,
-      controlFlowFlatteningThreshold: 0.5,
-      deadCodeInjection: false, // Less aggressive for inline scripts
+      controlFlowFlattening: false, // Disabled for performance
+      controlFlowFlatteningThreshold: 0,
+      deadCodeInjection: false,
       identifierNamesGenerator: 'hexadecimal',
       log: false,
       renameGlobals: false,
-      selfDefending: false, // Can cause issues with inline scripts
+      selfDefending: false,
       simplify: true,
-      splitStrings: true,
+      splitStrings: false, // Disabled for performance
       splitStringsChunkLength: 10,
       stringArray: true,
-      stringArrayEncoding: ['base64'],
-      stringArrayThreshold: 0.75,
-      transformObjectKeys: true
+      stringArrayEncoding: [], // Disabled for performance
+      stringArrayThreshold: 0.5, // Reduced for performance
+      transformObjectKeys: false // Disabled for performance
     });
     
     processedHtml = processedHtml.replace(match[0], `<script>${obfuscatedInline.getObfuscatedCode()}</script>`);
@@ -155,7 +155,7 @@ async function build() {
 
   console.log('✨ Build complete! Output in ./dist/\n');
   console.log('📊 Build Summary:');
-  console.log('   - JavaScript: Obfuscated with high protection');
+  console.log('   - JavaScript: Obfuscated (performance-optimized)');
   console.log('   - HTML: Minified');
   console.log('   - CSS: Minified (inline)');
   console.log('   - Assets: Copied');
