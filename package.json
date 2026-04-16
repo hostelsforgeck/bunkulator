@@ -2,9 +2,13 @@
   "name": "bunkulator",
   "version": "1.0.0",
   "scripts": {
-    "build": "mkdir -p dist && html-minifier-terser index.html -o dist/index.html --collapse-whitespace --remove-comments --minify-css true --minify-js true && cp bunku-mascot.js og-image.png favicon.ico robots.txt sitemap.xml googleb39cc6ccea63aaf9.html dist/"
+    "build": "node build.js"
   },
-  "devDependencies": {
-    "html-minifier-terser": "^7.2.0"
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "html-minifier-terser": "^7.2.0",
+    "javascript-obfuscator": "^4.1.0"
   }
 }
