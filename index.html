@@ -819,6 +819,16 @@
       animation: shake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
     }
 
+    /* ── Conducted-card nudge hint (fires on 2nd attended-at-max hit) ── */
+    @keyframes card-nudge-glow {
+      0%   { box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(255,255,255,0.03), inset 0 0 0 1px rgba(255,255,255,0.045); }
+      40%  { box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(255,255,255,0.03), inset 0 0 0 2px rgba(255,255,255,0.32); }
+      100% { box-shadow: 0 20px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.07), inset 0 -1px 0 rgba(255,255,255,0.03), inset 0 0 0 1px rgba(255,255,255,0.045); }
+    }
+    .card.nudge-hint {
+      animation: card-nudge-glow 0.7s ease forwards;
+    }
+
     .wheel-container {
       position: relative;
       width: 100%;
@@ -1870,7 +1880,7 @@
       valEl.style.opacity = '1';
     }
 
-    function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinValue, onValueSettle, initialValue, tickOffset }) {
+    function createRadialSlider({ wheelEl, valEl, containerEl, getMaxValue, getMinValue, onValueSettle, initialValue, tickOffset, onMaxBoundaryHit }) {
       const settle = onValueSettle || (() => { });
       const minVal = () => (getMinValue ? getMinValue() : 0);
       // tickOffset: cosmetic ticks before the real minimum (dead zone).
@@ -2011,6 +2021,7 @@
             shakeDebounce = true;
             triggerLimitFeedback();
             valEl.classList.add('at-zero', 'shake');
+            if (onMaxBoundaryHit) onMaxBoundaryHit();
             setTimeout(() => { valEl.classList.remove('shake'); setTimeout(() => valEl.classList.remove('at-zero'), 600); shakeDebounce = false; }, 420);
           }
         } else {
@@ -2067,6 +2078,72 @@
       onValueSettle: v => { gTotal = v; onValuesChanged(); },
     });
 
+    // ── Counter: how many times the attended slider has hit its max (= conducted) ──
+    let _attendedMaxHitCount = 0;
+    let _conductedNudgeDebounce = false;
+
+    // Nudges the "Conducted" wheel 3 ticks to the right and springs back,
+    // plus briefly glows the card border — guides user to raise conducted classes.
+    function triggerConductedNudge() {
+      if (_conductedNudgeDebounce) return;
+      _conductedNudgeDebounce = true;
+
+      const wheelEl = $('wheel');
+      const valEl   = $('val');
+      const card    = $('coach-card-1');
+
+      // Parse current wheel rotation
+      const match = (wheelEl.style.transform || 'rotate(0deg)').match(/rotate\(([^)]+)deg\)/);
+      const baseDeg = match ? parseFloat(match[1]) : 0;
+
+      // 3 ticks to the right = -3 * SNAP_ANGLE (wheel rotates negative-forward)
+      // Right = more conducted classes visually
+      const SNAP_ANGLE = 360 / 100;
+      const nudgeDeg = SNAP_ANGLE * 2; // 7.2 deg
+      const dur = 480; // ms
+      const t0 = performance.now();
+
+      function frame(now) {
+        const raw = Math.min((now - t0) / dur, 1);
+        // Goes out to nudgeDeg at t=0.4, returns to 0 by t=1
+        // Shape: sin(raw * π) gives a smooth bell — peak at raw=0.5
+        const wave = Math.sin(raw * Math.PI) * nudgeDeg;
+        // Negative because the wheel element rotates negatively for positive values
+        wheelEl.style.transition = 'none';
+        wheelEl.style.transform = `rotate(${baseDeg - wave}deg)`;
+
+        // Animate the val number during nudge
+        if (raw < 1) {
+          requestAnimationFrame(frame);
+        } else {
+          // Restore exact original rotation
+          wheelEl.style.transform = `rotate(${baseDeg}deg)`;
+          valEl.textContent = gTotal; // ensure displayed value is correct
+          setTimeout(() => { _conductedNudgeDebounce = false; }, 600);
+        }
+      }
+      requestAnimationFrame(frame);
+
+      // Glow the conducted card border
+      card.classList.remove('nudge-hint');
+      void card.offsetWidth; // force reflow to restart animation
+      card.classList.add('nudge-hint');
+      setTimeout(() => card.classList.remove('nudge-hint'), 800);
+
+      // Haptic feedback — same as limit error but gentler (single buzz)
+      try {
+        const ctx = getAudioCtx();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 220;
+        const t = ctx.currentTime;
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(0.10, t + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t + 0.18);
+      } catch(e) {}
+    }
+
     const s2 = createRadialSlider({
       wheelEl: $('wheel2'),
       valEl: $('val2'),
@@ -2074,6 +2151,14 @@
       getMaxValue: () => gTotal,
       initialValue: gAttended,    // restored from localStorage or default
       onValueSettle: v => { gAttended = v; onValuesChanged(); },
+      onMaxBoundaryHit: () => {
+        _attendedMaxHitCount++;
+        // 1st hit: attended val already shakes red (handled inside createRadialSlider).
+        // 2nd+ hit: also nudge the Conducted wheel to hint "raise it".
+        if (_attendedMaxHitCount >= 2) {
+          triggerConductedNudge();
+        }
+      },
     });
 
     window.addEventListener('mousemove', e => { s1.onDragMove(e.clientX); s2.onDragMove(e.clientX); s3.onDragMove(e.clientX); });
