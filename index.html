@@ -1975,6 +1975,7 @@
         momentumRAF = requestAnimationFrame(step);
       }
       function onDragStart(clientX) {
+        if (window._markSliderInteractionStarted) window._markSliderInteractionStarted();
         if (momentumRAF) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
         if (rubberRafId) { cancelAnimationFrame(rubberRafId); rubberRafId = null; }
         rubberOffset = 0; rubberAnchorX = null; isDragging = true;
@@ -2300,6 +2301,7 @@
         momentumRAF = requestAnimationFrame(step);
       }
       function onDragStart(clientX) {
+        if (window._markSliderInteractionStarted) window._markSliderInteractionStarted();
         if (momentumRAF) { cancelAnimationFrame(momentumRAF); momentumRAF = null; }
         if (rubberRafId) { cancelAnimationFrame(rubberRafId); rubberRafId = null; }
         rubberOffset = 0; isDragging = true;
@@ -2364,9 +2366,9 @@
     //  once per session to hint "spin me".
     // ════════════════════════════════════════════
     (function initTapShakeHint() {
-      const LS_TAP_HINT = 'bunku_tap_hint_shown';
-      // Only once per session (not persisted — clears on tab close)
-      let shownThisSession = false;
+      // Track if ANY slider has been interacted with (drag or tap)
+      // Session-only — resets on page reload
+      let anyInteractionStarted = false;
 
       // ── Sine-wave rAF hint ──
       // Drives a single full oscillation: left → centre → right → centre
@@ -2376,8 +2378,8 @@
       const HINT_DURATION = 1100; // ms
 
       function sineHint(applyFn) {
-        if (shownThisSession) return;
-        shownThisSession = true;
+        if (anyInteractionStarted) return;
+        anyInteractionStarted = true;
         const t0 = performance.now();
         function frame(now) {
           const raw = (now - t0) / HINT_DURATION;          // 0 → 1
@@ -2457,25 +2459,79 @@
       }
 
       function attachTapDetector(containerEl, onTap) {
-        let startX = 0, startY = 0, startTime = 0;
+        let startX = 0, startY = 0, startTime = 0, hasMoved = false;
+        
+        containerEl.addEventListener('mousedown', e => {
+          startX = e.clientX;
+          startY = e.clientY;
+          startTime = performance.now();
+          hasMoved = false;
+        }, { passive: true });
+        
+        containerEl.addEventListener('mousemove', e => {
+          if (startTime > 0) {
+            const dx = Math.abs(e.clientX - startX);
+            const dy = Math.abs(e.clientY - startY);
+            if (dx > 3 || dy > 3) hasMoved = true;
+          }
+        }, { passive: true });
+        
+        containerEl.addEventListener('mouseup', e => {
+          if (startTime === 0) return;
+          const dx = Math.abs(e.clientX - startX);
+          const dy = Math.abs(e.clientY - startY);
+          const dt = performance.now() - startTime;
+          startTime = 0;
+          // Only trigger if no interaction has started yet AND it's a tap (not a drag)
+          if (!anyInteractionStarted && !hasMoved && dx < 8 && dy < 8 && dt < 300) {
+            onTap();
+          }
+        }, { passive: true });
+        
         containerEl.addEventListener('touchstart', e => {
           startX = e.touches[0].clientX;
           startY = e.touches[0].clientY;
           startTime = performance.now();
+          hasMoved = false;
         }, { passive: true });
+        
+        containerEl.addEventListener('touchmove', e => {
+          if (startTime > 0) {
+            const dx = Math.abs(e.touches[0].clientX - startX);
+            const dy = Math.abs(e.touches[0].clientY - startY);
+            if (dx > 3 || dy > 3) hasMoved = true;
+          }
+        }, { passive: true });
+        
         containerEl.addEventListener('touchend', e => {
+          if (startTime === 0) return;
           const dx = Math.abs(e.changedTouches[0].clientX - startX);
           const dy = Math.abs(e.changedTouches[0].clientY - startY);
           const dt = performance.now() - startTime;
-          if (dx < 8 && dy < 8 && dt < 300) onTap();
+          startTime = 0;
+          // Only trigger if no interaction has started yet AND it's a tap (not a drag)
+          if (!anyInteractionStarted && !hasMoved && dx < 8 && dy < 8 && dt < 300) {
+            onTap();
+          }
         }, { passive: true });
-        containerEl.addEventListener('click', () => onTap(), { passive: true });
       }
 
+      // Expose function to mark interaction started (called from drag handlers)
+      window._markSliderInteractionStarted = function() {
+        anyInteractionStarted = true;
+      };
+
       // Pass valEl + live gTotal/gAttended/gTarget so numbers update during hint
-      attachTapDetector($('wheelContainer'), () => shakeWheel($('wheel'), $('val'), gTotal, 1, 500));
-      attachTapDetector($('wheelContainer2'), () => shakeWheel($('wheel2'), $('val2'), gAttended, 0, gTotal));
-      attachTapDetector($('sliderContainer3'), () => shakeStrip($('tickStrip3'), $('val3'), gTarget));
+      // Use arrow functions to capture current values at tap time
+      attachTapDetector($('wheelContainer'), () => {
+        shakeWheel($('wheel'), $('val'), gTotal, 1, 500);
+      });
+      attachTapDetector($('wheelContainer2'), () => {
+        shakeWheel($('wheel2'), $('val2'), gAttended, 0, gTotal);
+      });
+      attachTapDetector($('sliderContainer3'), () => {
+        shakeStrip($('tickStrip3'), $('val3'), gTarget);
+      });
     })();
 
     // ════════════════════════════════════════════
