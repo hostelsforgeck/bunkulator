@@ -110,7 +110,9 @@ async function build() {
     'favicon.ico',
     'robots.txt',
     'sitemap.xml',
-    'googleb39cc6ccea63aaf9.html'
+    'googleb39cc6ccea63aaf9.html',
+    'bunku-mascot-wave.webp',
+    'bunku-mascot-carrot.webp'
   ];
 
   // Copy assets folder if it exists

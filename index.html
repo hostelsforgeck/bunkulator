@@ -261,8 +261,10 @@
       white-space: nowrap;
     }
 
-    .built-with a:hover {
-      color: rgba(255, 255, 255, 0.55);
+    @media (hover: hover) and (pointer: fine) {
+      .built-with a:hover {
+        color: rgba(255, 255, 255, 0.55);
+      }
     }
 
     .built-with-name {
@@ -272,15 +274,11 @@
     }
 
     .built-with-label {
-      transition: opacity 1.2s ease;
+      transition: opacity 0.6s ease;
     }
 
     .built-with-label.fade-out {
       opacity: 0;
-    }
-
-    .built-with-label.fade-in {
-      opacity: 1;
     }
 
     #noise-canvas {
@@ -503,7 +501,7 @@
       position: relative;
       overflow: hidden;
       flex-shrink: 0;
-      transition: border-color 0.2s ease, opacity 0.2s ease;
+      transition: border-color 0.2s ease, opacity 0.2s ease, transform 0.12s ease-out;
     }
 
     .vH-gap-rect[data-gap-tap="0"] {
@@ -512,8 +510,15 @@
       width: 120px;
     }
 
-    .vH-gap-rect[data-gap-tap="1"]:hover {
-      border-color: rgba(255, 255, 255, 0.45);
+    @media (hover: hover) and (pointer: fine) {
+      .vH-gap-rect[data-gap-tap="1"]:hover {
+        border-color: rgba(255, 255, 255, 0.45);
+      }
+    }
+
+    /* Press feedback on the tappable gap cell */
+    .vH-gap-rect[data-gap-tap="1"]:active {
+      transform: scale(0.97);
     }
 
     .vH-gap-hint {
@@ -617,7 +622,13 @@
 
     .vH-slide {
       width: 100%;
-      transition: opacity .2s ease;
+      transition: opacity .2s ease, transform .14s ease-out;
+    }
+
+    /* Press feedback only on the dimmed/inactive (i.e. tappable) slide */
+    .vH-slide-convince:not(.active):active,
+    .vH-slide-attend.dimmed:active {
+      transform: scale(0.985);
     }
 
     .vH-slide-convince {
@@ -1123,7 +1134,9 @@
     .tick-slot .tick-line {
       background: #e5e7eb;
       transform-origin: center;
-      transition: transform 0.08s ease-out, opacity 0.08s ease-out;
+      /* No transition: apply3DEffect() rewrites transform + opacity every rAF frame.
+         A CSS transition on the same properties never settles and smears the ticks
+         during fast scrubbing. The rAF loop is the single source of motion here. */
     }
 
     .tick-slot .tick-line.landmark {
@@ -1239,7 +1252,7 @@
       height: 5px;
       border-radius: 50%;
       background: rgba(255, 255, 255, 0.3);
-      transition: all 0.25s ease;
+      transition: width 0.25s ease, border-radius 0.25s ease, background-color 0.25s ease;
     }
 
     .coach-dot.active {
@@ -1262,6 +1275,45 @@
       padding: 6px 14px;
       z-index: 9001;
       white-space: nowrap;
+      transition: transform 0.14s ease-out;
+    }
+
+    #coach-skip:active {
+      transform: translateX(-50%) scale(0.96);
+    }
+
+    /* ══════════════════════════════════════
+       REDUCED MOTION
+       Honour OS-level "reduce motion". We keep opacity/colour
+       transitions that aid comprehension, and strip movement:
+       wheel-spin intro, shakes, nudges, the sine "spin me" hint,
+       and the looping gap shimmer. JS-driven motions (intro spin,
+       tap hint, conducted nudge) are additionally guarded in script
+       via the `prefersReducedMotion` flag.
+    ══════════════════════════════════════ */
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+      }
+
+      /* Kill positional/scale feedback but keep colour cues (e.g. .at-zero red) */
+      .value-display .val-num,
+      .value-display-horizontal .val-num-h,
+      .value-display-horizontal .label-h-pct {
+        transition: color 0.2s ease !important;
+      }
+
+      .val-num.shake,
+      .val-num-h.shake,
+      .label-h-pct.shake,
+      .card.nudge-hint,
+      .vH-gap-rect.loading::after {
+        animation: none !important;
+      }
     }
   </style>
 </head>
@@ -1404,6 +1456,11 @@
     const DEFAULT_TARGET = 75;
     const LS_KEY = 'attn_calc_v1';
 
+    // Honour OS "reduce motion". Used to skip JS-driven flourishes
+    // (intro wheel-spin, tap "spin me" hint, conducted nudge).
+    const prefersReducedMotion =
+      window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     // ════════════════════════════════════════════
     //  PERSISTENCE — localStorage
     // ════════════════════════════════════════════
@@ -1445,7 +1502,7 @@
     const elOuter = $('vH-scroll-outer'), elWrap = $('vH-scroll-wrap');
     const elCard = $('vH');
 
-    let currentSlide = 0, lastS = null, lastCase = 'above';
+    let currentSlide = 0, lastS = null;
 
     function calc(total, attended, target) {
       const pct = total ? Math.round(attended / total * 100) : 0;
@@ -1669,8 +1726,15 @@
       elFrac.innerHTML = `${from}<span class="frac-arrow">→</span><span class="frac-to" style="color:${c.text}">${toA}/${toT}</span>`;
     }
 
+    let _scrollTimer = null;
     function scrollToTarget() {
-      setTimeout(() => {
+      // Debounced. While a slider is being dragged this is called many times a
+      // second; without debouncing, each call stacks another smooth scrollTo,
+      // and competing smooth-scroll animations are a major jank source on
+      // low-end devices. We scroll only once updates quiesce — the final
+      // resting position is identical.
+      clearTimeout(_scrollTimer);
+      _scrollTimer = setTimeout(() => {
         requestAnimationFrame(() => {
           const target = elWrap.querySelector('.vH-cell-col.is-target');
           if (!target) return;
@@ -1683,7 +1747,7 @@
           const to = currentScroll + (targetRect.left - wrapRect.left) - clientW / 2 + targetW / 2;
           elWrap.scrollTo({ left: Math.max(0, to), behavior: 'smooth' });
         });
-      }, 80);
+      }, 90);
     }
 
     function showAttendGraph(s, c) {
@@ -1719,7 +1783,7 @@
     }
 
     function updateCard(s) {
-      lastS = s; lastCase = s.case;
+      lastS = s;
       const c = col(s.case);
       elCard.style.background = `radial-gradient(ellipse 65% 55% at 15% 110%, ${c.light}, transparent 55%), #000`;
       elPct.innerHTML = `${s.pct}<sup>%</sup>`;
@@ -1781,17 +1845,27 @@
     }
 
     // Master update — called whenever any slider changes
+    let _ucRaf = 0, _ucPending = null;
     function onValuesChanged() {
       gAttended = Math.min(gAttended, gTotal);
       const s = calc(gTotal, gAttended, gTarget);
-      if (lastS && s.total === lastS.total && s.attended === lastS.attended && s.target === lastS.target && s.case === lastS.case) {
-        s2.clampToMax();
-        saveState();
-        return;
-      }
-      updateCard(s);
+      // Cheap, must-be-synchronous work stays inline: clamp the attended wheel
+      // to the (possibly reduced) max, and persist.
       s2.clampToMax();
       saveState();
+      if (lastS && s.total === lastS.total && s.attended === lastS.attended && s.target === lastS.target && s.case === lastS.case) {
+        return;
+      }
+      // Coalesce the heavy card rebuild to at most one per frame. During a fast
+      // drag/momentum, multiple value ticks in a single frame collapse into a
+      // single render of the latest value — keeps it smooth even at 500 classes.
+      _ucPending = s;
+      if (!_ucRaf) {
+        _ucRaf = requestAnimationFrame(() => {
+          _ucRaf = 0;
+          updateCard(_ucPending);
+        });
+      }
     }
 
     // Scroll fade
@@ -2063,7 +2137,7 @@
       }
       containerEl.addEventListener('mousedown', e => { onDragStart(e.clientX); e.preventDefault(); });
       containerEl.addEventListener('touchstart', e => { onDragStart(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
-      return { onDragMove, onDragEnd, clampToMax, getCurrentValue: () => getValueFromRotation(accumulatedRotation) };
+      return { onDragMove, onDragEnd, clampToMax };
     }
 
     // ── Instantiate radial sliders ──
@@ -2085,6 +2159,7 @@
     // Nudges the "Conducted" wheel 3 ticks to the right and springs back,
     // plus briefly glows the card border — guides user to raise conducted classes.
     function triggerConductedNudge() {
+      if (prefersReducedMotion) return;
       if (_conductedNudgeDebounce) return;
       _conductedNudgeDebounce = true;
 
@@ -2488,6 +2563,7 @@
       const HINT_TICK_PX = 10;
 
       function shakeWheel(wheelEl, valEl, baseValue, minVal, maxVal) {
+        if (prefersReducedMotion) return; // no motion hint under reduce-motion
         if (anySliderUsed) return; // Don't show hint if any slider already used
         anySliderUsed = true; // Mark that a slider has been interacted with
         
@@ -2520,6 +2596,7 @@
       }
 
       function shakeStrip(stripEl, valEl, baseValue) {
+        if (prefersReducedMotion) return; // no motion hint under reduce-motion
         if (anySliderUsed) return; // Don't show hint if any slider already used
         anySliderUsed = true; // Mark that a slider has been interacted with
         
@@ -2874,6 +2951,13 @@
     (function runIntroAnimation() {
       // Animate to saved values (fast) or defaults (normal speed)
       const isFresh = !_saved;
+
+      // The sliders already initialise to the correct positions/values in their
+      // constructors. The intro is pure flourish, so skip it when the user opted
+      // out of motion, OR on returning visits (it otherwise replays every load —
+      // an animation seen on every visit should not animate).
+      if (prefersReducedMotion || !isFresh) return;
+
       const toTotal = gTotal;
       const toAttended = gAttended;
       const toTarget = gTarget;
@@ -3070,7 +3154,7 @@
 
       const el = document.getElementById('built-with-label');
       const INTERVAL = 6000;
-      const FADE = 1200;
+      const FADE = 600;
 
       // Interleave: credit, tagline[0], credit, tagline[1], ...
       const sequence = [];
