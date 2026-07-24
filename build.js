@@ -112,7 +112,12 @@ async function build() {
     'sitemap.xml',
     'googleb39cc6ccea63aaf9.html',
     'bunku-mascot-wave.webp',
-    'bunku-mascot-carrot.webp'
+    'bunku-mascot-carrot.webp',
+    'manifest.webmanifest',
+    'sw.js',
+    'icon-192.png',
+    'icon-512.png',
+    'icon-maskable-512.png'
   ];
 
   // Copy assets folder if it exists
